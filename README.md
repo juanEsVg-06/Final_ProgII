@@ -40,3 +40,80 @@ El Arduino (si está conectado) puede reflejar el estado de los dedos en **5 LED
 
 ```bash
 pip install opencv-python mediapipe pyserial
+```
+
+### 2) Ejecutar el programa
+- Opción A (recomendada): ejecutar desde src/
+Desde la carpeta raíz (la que contiene src/):
+
+`cd src
+python -m cliente.main`
+
+- Opción B: ejecutar desde raíz usando PYTHONPATH
+
+PowerShell
+
+`$env:PYTHONPATH="src"
+python -m cliente.main`
+
+CMD
+
+`set PYTHONPATH=src
+python -m cliente.main`
+
+### 3) Variables de entorno (calibración)
+
+Estas variables permiten ajustar estabilidad del sensor sin modificar código.
+Webcam / Gestos
+  - CAMERA_INDEX (default: 0)
+  - GESTOS_PREVIEW (default: 1) → 1 muestra ventana, 0 sin preview
+  - GESTOS_STABLE_FRAMES (default: 10)
+  - GESTOS_DEBOUNCE_S (default: 0.9)
+  - GESTOS_MARGEN_Y (default: 0.04)
+  - GESTOS_MARGEN_X (default: 0.03)
+
+PIN más estable (recomendado)
+  - PIN_REQUIRE_NO_HAND (default: 1) → exige “sin mano” entre dígitos del PIN
+  - NO_HAND_FRAMES (default: 6)
+
+Arduino (opcional)
+  - ARDUINO_PORT (ej: COM3)
+  - ARDUINO_BAUD (default: 9600)
+
+Ejemplo (PowerShell):
+
+`$env:PYTHONPATH="src"
+$env:GESTOS_PREVIEW="1"
+$env:GESTOS_STABLE_FRAMES="10"
+$env:GESTOS_DEBOUNCE_S="0.9"
+$env:PIN_REQUIRE_NO_HAND="1"
+$env:NO_HAND_FRAMES="6"
+python -m cliente.main`
+
+### 4) Flujo recomendado para demo/defensa
+  - Crear estudiante
+  - Crear área
+  - Asignar permiso
+  - Asignar RFID
+  - Configurar PIN (4 gestos)
+  - Enrolar patrón (10 gestos)
+  - Intentar acceso
+  - Ver auditoría y listados
+
+### 5) Arduino (.ino) – Protocolo serial
+
+El Arduino recibe 5 bytes (0/1), uno por dedo, para encender 5 LEDs.
+
+En Python se envía:
+
+`ser.write(bytes(dedos))`
+donde dedos = `[thumb, index, middle, ring, pinky]` con valores 0/1.
+
+### 6) Troubleshooting rápido
+  - La webcam no abre: cierra apps que usen cámara (Zoom/Teams/Discord) y reinicia.
+  - No detecta mano estable: sube `GESTOS_STABLE_FRAMES` o `GESTOS_DEBOUNCE_S.`
+  - PIN falla mucho: activa `PIN_REQUIRE_NO_HAND=1` para separar dígitos con “sin mano”.
+
+::contentReference[oaicite:0]{index=0}
+```bash
+pip install opencv-python mediapipe pyserial
