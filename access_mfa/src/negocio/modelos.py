@@ -14,11 +14,14 @@ from .enums import (
 )
 from .exceptions import ValidacionError
 
+# Requerimiento de estado "no vacio"
 
 def _require_non_empty(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValidacionError(f"{field_name} no puede estar vacío.")
     return value.strip()
+
+# Requerimiento y validacion de rangos (int)
 
 def _require_int_range(value: int, field_name: str, min_v: int, max_v: int) -> int:
     if not isinstance(value, int) or not (min_v <= value <= max_v):
