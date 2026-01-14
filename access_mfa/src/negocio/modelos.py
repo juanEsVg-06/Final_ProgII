@@ -65,8 +65,14 @@ class AreaAcceso:
 
     def es_accesible_ahora(self, ahora: datetime) -> bool:
         t = ahora.time()
-        # Caso simple: apertura < cierre (mismo día)
-        return self.hora_apertura <= t <= self.hora_cierre
+
+        # Caso simple: apertura <= cierre (mismo día)
+        if self.hora_apertura <= self.hora_cierre:
+            return self.hora_apertura <= t <= self.hora_cierre
+
+        # Caso medianoche (ej. 20:00 -> 07:00)
+        return t >= self.hora_apertura or t <= self.hora_cierre
+
 
 @dataclass
 class CredencialRFID:

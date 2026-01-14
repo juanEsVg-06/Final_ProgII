@@ -146,18 +146,24 @@ def pedir_fecha(etiqueta: str) -> date:
             print("Formato inválido. Ejemplo: 2026-01-10")
 
 
-# ------------------ Infra wiring ------------------
-
 def construir_actuador() -> IActuadorAcceso:
     puerto = os.getenv("ARDUINO_PORT")
+    baud = int(os.getenv("ARDUINO_BAUD", "9600"))
+
     if not puerto:
+        print("[INFO] ARDUINO_PORT no configurado -> usando NullActuador (sin hardware).")
+        print("       Ejemplo PowerShell: $env:ARDUINO_PORT='COM5'")
         return NullActuador()
 
     try:
-        return ArduinoSerial(puerto=puerto, baudrate=9600, timeout=1.0)
+        act = ArduinoSerial(puerto=puerto, baudrate=baud, timeout=1.0)
+        print(f"[INFO] ArduinoSerial activo en {puerto} (baud={baud}).")
+        return act
     except IntegracionHardwareError as ex:
-        print(f"[AVISO] Arduino no disponible: {ex}")
+        print(f"[AVISO] No se pudo abrir Arduino en {puerto}: {ex}")
+        print("[AVISO] Usando ArduinoSimulado (sin LEDs reales).")
         return ArduinoSimulado()
+
 
 def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     """
@@ -176,14 +182,16 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     stable_frames = int(os.getenv("GESTOS_STABLE_FRAMES", "10"))
     debounce_s = float(os.getenv("GESTOS_DEBOUNCE_S", "0.9"))
 
-    # --- Regla “sin mano entre dígitos” (recomendado para PIN) ---
+    # --- Regla “sin mano" (recomendado para PIN) ---
     # 1 = habilitado, 0 = deshabilitado
     pin_require_no_hand = os.getenv("PIN_REQUIRE_NO_HAND", "1") == "1"
-    no_hand_frames = int(os.getenv("NO_HAND_FRAMES", "6"))
+    patron_require_no_hand = os.getenv("PATRON_REQUIRE_NO_HAND", "1") == "1"
+
+    no_hand_frames = int(os.getenv("NO_HAND_FRAMES", "4"))
 
     debug = os.getenv("DEBUG", "0") == "1"
 
-    # Validaciones mínimas (evitan comportamientos raros y crasheos silenciosos)
+    # Validaciones mínimas
     if camera_index < 0:
         raise IntegracionHardwareError("CAMERA_INDEX inválido (debe ser >= 0).")
 
@@ -197,22 +205,19 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
         raise IntegracionHardwareError("NO_HAND_FRAMES inválido (mínimo 1).")
 
     # Construcción del sensor webcam
-    # Nota: arduino puede ser None (tu caso actual).
     try:
-        # Si tu clase ya soporta estos parámetros en __init__, perfecto.
         sensor = SensorGestosWebcamMediapipeTasks(
             camera_index=camera_index,
             mostrar_preview=mostrar_preview,
             stable_frames=stable_frames,
             debounce_s=debounce_s,
-            arduino=actuador,  # en tu diseño, el actuador puede exponer enviar_leds o similar
+            arduino=actuador,
             pin_require_no_hand=pin_require_no_hand,
+            patron_require_no_hand=patron_require_no_hand,
             no_hand_frames=no_hand_frames,
             debug=debug,
         )
     except TypeError:
-        # Compatibilidad: si aún no agregaste esos parámetros al __init__,
-        # los configuramos por atributos (sin romper nada).
         sensor = SensorGestosWebcamMediapipeTasks(
             camera_index=camera_index,
             mostrar_preview=mostrar_preview,
@@ -220,9 +225,9 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
             debounce_s=debounce_s,
             arduino=actuador,
         )
-        # Seteo “suave” (solo si existen en tu implementación)
         for k, v in {
             "pin_require_no_hand": pin_require_no_hand,
+            "patron_require_no_hand": patron_require_no_hand,
             "no_hand_frames": no_hand_frames,
             "debug": debug,
         }.items():
@@ -437,7 +442,7 @@ def accion_enrolar_patron(ctx: AppContext) -> None:
         return
 
     print("Ponga la mano frente a la cámara. Registre 10 gestos.")
-    sec, tiempos = ctx.sensor.capturar_secuencia(10, gesto_cierre=19, timeout_s=120)
+    sec, tiempos = ctx.sensor.capturar_secuencia(10, gesto_cierre=19, timeout_s=180)
     if len(sec) != 10:
         print("Patrón incompleto/cancelado.")
         return

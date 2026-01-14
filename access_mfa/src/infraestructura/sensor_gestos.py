@@ -11,7 +11,7 @@ from negocio.exceptions import IntegracionHardwareError, ValidacionError
 
 
 class ISensorGestos(ABC):
-    # Contrado de captura de gestos
+    """Contrato de captura de gestos."""
 
     @abstractmethod
     def capturar_secuencia(
@@ -26,7 +26,7 @@ class ISensorGestos(ABC):
 
 @dataclass
 class SensorGestosSimulado(ISensorGestos):
-    # Uso si no hay camara
+    """Uso si no hay cámara."""
     secuencias: list[list[int]]
 
     def capturar_secuencia(
@@ -45,23 +45,22 @@ class SensorGestosSimulado(ISensorGestos):
 
 
 class SensorGestosWebcamMediapipeTasks(ISensorGestos):
-
     def __init__(
-            self,
-            *,
-            camera_index: int = 0,
-            mostrar_preview: bool = True,
-            stable_frames: int = 5,
-            debounce_s: float = 0.6,
-            flip: bool = True,
-            model_path: str | None = None,
-            arduino: object | None = None,
-            # NUEVO:
-            pin_require_no_hand: bool = True,
-            no_hand_frames: int = 6,
-            debug: bool = False,
+        self,
+        *,
+        camera_index: int = 0,
+        mostrar_preview: bool = True,
+        stable_frames: int = 5,
+        debounce_s: float = 0.6,
+        flip: bool = True,
+        model_path: str | None = None,
+        arduino: object | None = None,
+        # “Sin mano” entre gestos (PIN y Patrón)
+        pin_require_no_hand: bool = True,
+        patron_require_no_hand: bool = True,
+        no_hand_frames: int = 6,
+        debug: bool = False,
     ) -> None:
-
         self.camera_index = camera_index
         self.mostrar_preview = mostrar_preview
         self.stable_frames = max(1, stable_frames)
@@ -69,6 +68,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         self.flip = flip
         self.arduino = arduino
         self.pin_require_no_hand = pin_require_no_hand
+        self.patron_require_no_hand = patron_require_no_hand
         self.no_hand_frames = max(1, no_hand_frames)
         self.debug = debug
 
@@ -76,7 +76,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         self.margen_y = float(os.getenv("GESTOS_MARGEN_Y", "0.04"))
         self.margen_x = float(os.getenv("GESTOS_MARGEN_X", "0.03"))
 
-        # Imports con delay para no cerrar el proyecto si faltan dependencias
+        # Imports con delay
         try:
             import cv2  # type: ignore
         except Exception as ex:
@@ -97,7 +97,6 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         self.model_path = self._resolver_model_path(model_path)
 
     def _resolver_model_path(self, model_path: str | None) -> str:
-        # Busca el .task
         if model_path:
             p = Path(model_path).expanduser().resolve()
             if not p.exists():
@@ -121,30 +120,23 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         return dedos[0] * 1 + dedos[1] * 2 + dedos[2] * 4 + dedos[3] * 8 + dedos[4] * 16
 
     def _detectar_dedos(self, lm, handedness: str) -> list[int]:
-
-        # Índices estándar MediaPipe Hands
         TH_TIP, TH_IP = 4, 3
         IDX_TIP, IDX_PIP = 8, 6
         MID_TIP, MID_PIP = 12, 10
         RING_TIP, RING_PIP = 16, 14
         PINK_TIP, PINK_PIP = 20, 18
 
-        # Calibración
-        # Si se incluye el dedo medio cuando solo levanta índice, SUBIR MARGEN_Y.
         MARGEN_Y = self.margen_y
         MARGEN_X = self.margen_x
 
         dedos = [0, 0, 0, 0, 0]
 
-        # Pulgar (x) con margen
         dx_thumb = lm[TH_TIP].x - lm[TH_IP].x
         if handedness.lower() == "right":
             dedos[0] = 1 if dx_thumb > MARGEN_X else 0
         else:
-            # En left, se invierte
             dedos[0] = 1 if (-dx_thumb) > MARGEN_X else 0
 
-        # Otros dedos (y) con margen
         dedos[1] = 1 if lm[IDX_TIP].y < (lm[IDX_PIP].y - MARGEN_Y) else 0
         dedos[2] = 1 if lm[MID_TIP].y < (lm[MID_PIP].y - MARGEN_Y) else 0
         dedos[3] = 1 if lm[RING_TIP].y < (lm[RING_PIP].y - MARGEN_Y) else 0
@@ -178,8 +170,12 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         )
         landmarker = vision.HandLandmarker.create_from_options(options)
 
-        # Cámara (CAP_DSHOW evita bloqueos)
         cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+        if hasattr(cv2, "CAP_PROP_BUFFERSIZE"):
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
 
         if not cap.isOpened():
             landmarker.close()
@@ -206,12 +202,16 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         start_ts = datetime.now()
         t0_ms = int(start_ts.timestamp() * 1000)
 
-        #PIN robusto: exigir "sin mano" entre dígitos
-        enforce_no_hand_between = bool(self.pin_require_no_hand) and (cantidad == 4)
+        # NUEVO: aplicar “sin mano” también a patrón(10)
+        # (queda activado para PIN=4 y PATRON=10; si quieres para TODO, cambia la condición a cantidad >= 2)
+        enforce_no_hand_between = (
+                (cantidad == 4 and bool(self.pin_require_no_hand))
+                or (cantidad == 10 and bool(getattr(self, "patron_require_no_hand", False)))
+        )
+
         waiting_no_hand = False
         no_hand_count = 0
 
-        # Conexiones para dibujar
         HAND_CONNECTIONS = [
             (0, 1), (1, 2), (2, 3), (3, 4),
             (0, 5), (5, 6), (6, 7), (7, 8),
@@ -222,15 +222,21 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         ]
 
         win = "SensorGestosWebcam"
+        fail_reads = 0
+        MAX_FAIL_READS = 60
+
         try:
             while len(secuencia) < cantidad:
-                if timeout_s is not None:
-                    if (datetime.now() - start_ts).total_seconds() > timeout_s:
-                        break
+                if timeout_s is not None and (datetime.now() - start_ts).total_seconds() > timeout_s:
+                    break
 
                 ok, frame = cap.read()
-                if not ok:
+                if not ok or frame is None:
+                    fail_reads += 1
+                    if fail_reads >= MAX_FAIL_READS:
+                        raise IntegracionHardwareError("La webcam dejó de entregar frames (cap.read falló repetidamente).")
                     continue
+                fail_reads = 0
 
                 if self.flip:
                     frame = cv2.flip(frame, 1)
@@ -250,12 +256,12 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                 if result.hand_landmarks:
                     lm = result.hand_landmarks[0]
                     if result.handedness and result.handedness[0]:
-                        mano = result.handedness[0][0].category_name  # "Derecha"/"Izquierda"
+                        mano = result.handedness[0][0].category_name  # "Right"/"Left"
 
                     dedos = self._detectar_dedos(lm, mano)
                     gesto = self._dedos_a_bitmask(dedos)
 
-                    # espejo de LEDs si hay Arduino (opcional)
+                    # espejo de LEDs (si existe)
                     if self.arduino is not None and hasattr(self.arduino, "enviar_leds"):
                         try:
                             self.arduino.enviar_leds(dedos)  # type: ignore[attr-defined]
@@ -263,7 +269,6 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                             pass
 
                     if self.mostrar_preview:
-                        # bbox
                         xs = [p.x for p in lm]
                         ys = [p.y for p in lm]
                         x1, y1 = int(min(xs) * w), int(min(ys) * h)
@@ -276,18 +281,54 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                         for (px, py) in pts:
                             cv2.circle(frame, (px, py), 3, (0, 255, 0), -1, cv2.LINE_AA)
 
-                # Data superior
+                # Bloque “sin mano” (PIN y Patrón)
+                extra_line = ""
+                if enforce_no_hand_between and waiting_no_hand:
+                    if gesto is None:
+                        no_hand_count += 1
+                        stable_count = 0
+                        current_candidate = None
+                        extra_line = f"NEUTRO (retira mano) {no_hand_count}/{self.no_hand_frames}"
+                        if no_hand_count >= self.no_hand_frames:
+                            waiting_no_hand = False
+                            no_hand_count = 0
+                    else:
+                        # Hay mano: no aceptamos nada hasta que “desaparezca”
+                        no_hand_count = 0
+                        stable_count = 0
+                        current_candidate = None
+                        extra_line = "NEUTRO: retira la mano para continuar"
+
+                    # Render + teclas y luego seguimos
+                    if self.mostrar_preview:
+                        msg1 = f"Captura {len(secuencia)}/{cantidad} | ESC=salir | cierre={gesto_cierre if gesto_cierre is not None else '-'}"
+                        msg2 = "Sin mano detectada" if gesto is None else f"Gesto={gesto} bin={gesto:05b} mano={mano}"
+                        msg3 = extra_line
+
+                        def put_line(y: int, s: str) -> None:
+                            if not s:
+                                return
+                            cv2.putText(frame, s, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 4, cv2.LINE_AA)
+                            cv2.putText(frame, s, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+
+                        put_line(35, msg1)
+                        put_line(70, msg2)
+                        put_line(105, msg3)
+
+                        cv2.imshow(win, frame)
+                        if cv2.getWindowProperty(win, cv2.WND_PROP_VISIBLE) < 1:
+                            break
+                        k = cv2.waitKey(1) & 0xFF
+                        if k == 27 or k == ord("q"):
+                            break
+
+                    continue
+
+                # UI normal
                 if self.mostrar_preview:
                     msg1 = f"Captura {len(secuencia)}/{cantidad} | ESC=salir | cierre={gesto_cierre if gesto_cierre is not None else '-'}"
-                    msg2 = (
-                        f"Estabilizando {stable_count}/{self.stable_frames}"
-                        if gesto is not None else
-                        "Sin mano detectada"
-                    )
-                    if gesto is not None and dedos is not None:
-                        msg3 = f"Gesto={gesto} bin={gesto:05b} dedos={dedos} mano={mano}"
-                    else:
-                        msg3 = ""
+                    msg2 = f"Estabilizando {stable_count}/{self.stable_frames}" if gesto is not None else "Sin mano detectada"
+                    msg3 = f"Gesto={gesto} bin={gesto:05b} dedos={dedos} mano={mano}" if (gesto is not None and dedos is not None) else ""
 
                     def put_line(y: int, s: str) -> None:
                         if not s:
@@ -300,51 +341,13 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                     put_line(105, msg3)
 
                     cv2.imshow(win, frame)
+                    if cv2.getWindowProperty(win, cv2.WND_PROP_VISIBLE) < 1:
+                        break
                     k = cv2.waitKey(1) & 0xFF
-                    if k == 27 or k == ord("q"):  # ESC o q
+                    if k == 27 or k == ord("q"):
                         break
 
-                # Regla: si ya acepta un dígito (PIN), no acepta otro hasta ver "sin mano"
-                if enforce_no_hand_between and waiting_no_hand:
-                    # Si no hay mano detectada, neutros
-                    if gesto is None:
-                        no_hand_count += 1
-                        stable_count = 0
-                        current_candidate = None
-
-                        if self.mostrar_preview:
-                            # Mensaje
-                            msg_neutro = f"NEUTRO (retira mano) {no_hand_count}/{self.no_hand_frames}"
-                            cv2.putText(frame, msg_neutro, (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 4,
-                                        cv2.LINE_AA)
-                            cv2.putText(frame, msg_neutro, (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2,
-                                        cv2.LINE_AA)
-
-                        if no_hand_count >= self.no_hand_frames:
-                            waiting_no_hand = False
-                            no_hand_count = 0
-
-                        continue
-
-                    # Bloque de captura
-                    no_hand_count = 0
-                    stable_count = 0
-                    current_candidate = None
-
-                    if self.mostrar_preview:
-                        msg_neutro = "NEUTRO: retira la mano para el siguiente dígito"
-                        cv2.putText(frame, msg_neutro, (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 4,
-                                    cv2.LINE_AA)
-                        cv2.putText(frame, msg_neutro, (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2,
-                                    cv2.LINE_AA)
-                        cv2.imshow(win, frame)
-                        k = cv2.waitKey(1) & 0xFF
-                        if k == 27 or k == ord("q"):
-                            break
-
-                    continue
-
-                # Logica de estabilidad
+                # Lógica de estabilidad
                 if gesto is None:
                     stable_count = 0
                     current_candidate = None
@@ -359,17 +362,13 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                 if stable_count < self.stable_frames:
                     continue
 
-                # debounce
                 now = datetime.now()
-                if last_accept_ts is not None:
-                    if (now - last_accept_ts).total_seconds() < self.debounce_s:
-                        continue
+                if last_accept_ts is not None and (now - last_accept_ts).total_seconds() < self.debounce_s:
+                    continue
 
-                # gesto de cierre
                 if gesto_cierre is not None and gesto == gesto_cierre:
                     break
 
-                # aceptar gesto
                 if t_prev is not None:
                     tiempos.append((now - t_prev).total_seconds())
                 t_prev = now
@@ -379,12 +378,22 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                 stable_count = 0
                 current_candidate = None
 
+                if self.debug:
+                    print(f"[DEBUG] Aceptado gesto={gesto} -> {len(secuencia)}/{cantidad}")
+
                 if enforce_no_hand_between:
                     waiting_no_hand = True
                     no_hand_count = 0
 
         finally:
             cap.release()
+            # Apaga LEDs al salir (evita que se queden prendidos si cierras aquí)
+            if self.arduino is not None and hasattr(self.arduino, "enviar_leds"):
+                try:
+                    self.arduino.enviar_leds([0, 0, 0, 0, 0])  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+
             if self.mostrar_preview:
                 try:
                     cv2.destroyAllWindows()

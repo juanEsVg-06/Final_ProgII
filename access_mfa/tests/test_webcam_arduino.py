@@ -1,8 +1,6 @@
 from cliente.main import construir_sensor, construir_actuador
 
-
 def main():
-    # actuador puede ser None si el builder lo permite, o un dummy
     actuador = construir_actuador()
     sensor = construir_sensor(actuador)
 
