@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
+# Enunciados
 
 class EstadoCredencial(str, Enum):
     ACTIVA = "ACTIVA"

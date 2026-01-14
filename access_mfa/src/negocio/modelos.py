@@ -65,12 +65,10 @@ class AreaAcceso:
 
     def es_accesible_ahora(self, ahora: datetime) -> bool:
         t = ahora.time()
-
-        # Caso simple: apertura <= cierre (mismo día)
         if self.hora_apertura <= self.hora_cierre:
+            # mismo día
             return self.hora_apertura <= t <= self.hora_cierre
-
-        # Caso medianoche (ej. 20:00 -> 07:00)
+        # cruza medianoche (ej. 20:00 a 07:00)
         return t >= self.hora_apertura or t <= self.hora_cierre
 
 
@@ -125,7 +123,6 @@ class PatronGestual:
     secuencia_gestos: List[int]  # 0..31
     fecha_captura: datetime
 
-    # Opcional: tiempos (simulan biometría sin prometer visión compleja)
     tiempos_entre_gestos: Optional[List[float]] = None
 
     def __post_init__(self) -> None:
@@ -143,6 +140,7 @@ class PatronGestual:
                 )
             if any(t < 0 for t in self.tiempos_entre_gestos):
                 raise ValidacionError("tiempos_entre_gestos no puede contener valores negativos.")
+
 
 @dataclass
 class PermisoAcceso:

@@ -3,19 +3,19 @@ class DominioError(Exception):
 
 
 class ValidacionError(DominioError):
-    """Entrada inválida o datos inconsistentes."""
+    """Entrada no valida o datos inconsistentes."""
 
 
 class AutenticacionError(DominioError):
-    """Fallo de autenticación (RFID/PIN/Patrón)."""
+    """Fallo de auth (RFID/PIN/Patrón)."""
 
 
 class AutorizacionError(DominioError):
-    """Fallo de autorización (sin permiso / fuera de horario)."""
+    """Fallo de autorizacion (sin permiso / fuera de horario)."""
 
 
 class RecursoNoEncontradoError(DominioError):
-    """Entidad solicitada no existe en el repositorio."""
+    """Entidad solicitada no existe."""
 
 
 class IntegracionHardwareError(DominioError):

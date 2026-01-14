@@ -204,10 +204,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
 
         # NUEVO: aplicar “sin mano” también a patrón(10)
         # (queda activado para PIN=4 y PATRON=10; si quieres para TODO, cambia la condición a cantidad >= 2)
-        enforce_no_hand_between = (
-                (cantidad == 4 and bool(self.pin_require_no_hand))
-                or (cantidad == 10 and bool(getattr(self, "patron_require_no_hand", False)))
-        )
+        enforce_no_hand_between = bool(self.pin_require_no_hand) and (cantidad in (4, 10))
 
         waiting_no_hand = False
         no_hand_count = 0
@@ -248,18 +245,25 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
 
                 ts_ms = int(datetime.now().timestamp() * 1000) - t0_ms
                 result = landmarker.detect_for_video(mp_image, ts_ms)
+                hay_mano = False
+                gesto_raw: int | None = None
 
                 gesto: int | None = None
                 dedos: list[int] | None = None
                 mano = "?"
 
                 if result.hand_landmarks:
+                    hay_mano = True
                     lm = result.hand_landmarks[0]
                     if result.handedness and result.handedness[0]:
                         mano = result.handedness[0][0].category_name  # "Right"/"Left"
 
                     dedos = self._detectar_dedos(lm, mano)
-                    gesto = self._dedos_a_bitmask(dedos)
+                    gesto_raw = self._dedos_a_bitmask(dedos)
+                    gesto = gesto_raw
+                    # Para PIN/Patrón, evitamos aceptar gesto=0 (mano cerrada) como dígito
+                    if gesto_raw == 0 and cantidad in (4, 10):
+                        gesto = None
 
                     # espejo de LEDs (si existe)
                     if self.arduino is not None and hasattr(self.arduino, "enviar_leds"):
@@ -284,7 +288,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                 # Bloque “sin mano” (PIN y Patrón)
                 extra_line = ""
                 if enforce_no_hand_between and waiting_no_hand:
-                    if gesto is None:
+                    if not hay_mano:
                         no_hand_count += 1
                         stable_count = 0
                         current_candidate = None
@@ -302,7 +306,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                     # Render + teclas y luego seguimos
                     if self.mostrar_preview:
                         msg1 = f"Captura {len(secuencia)}/{cantidad} | ESC=salir | cierre={gesto_cierre if gesto_cierre is not None else '-'}"
-                        msg2 = "Sin mano detectada" if gesto is None else f"Gesto={gesto} bin={gesto:05b} mano={mano}"
+                        msg2 = "Sin mano detectada" if not hay_mano else f"Gesto={gesto_raw} bin={gesto_raw:05b} mano={mano}"
                         msg3 = extra_line
 
                         def put_line(y: int, s: str) -> None:
@@ -327,8 +331,8 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                 # UI normal
                 if self.mostrar_preview:
                     msg1 = f"Captura {len(secuencia)}/{cantidad} | ESC=salir | cierre={gesto_cierre if gesto_cierre is not None else '-'}"
-                    msg2 = f"Estabilizando {stable_count}/{self.stable_frames}" if gesto is not None else "Sin mano detectada"
-                    msg3 = f"Gesto={gesto} bin={gesto:05b} dedos={dedos} mano={mano}" if (gesto is not None and dedos is not None) else ""
+                    msg2 = f"Estabilizando {stable_count}/{self.stable_frames}" if hay_mano else "Sin mano detectada"
+                    msg3 = f"Gesto={gesto_raw} bin={gesto_raw:05b} dedos={dedos} mano={mano}" if (gesto is not None and dedos is not None) else ""
 
                     def put_line(y: int, s: str) -> None:
                         if not s:

@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -28,14 +30,24 @@ class CasoUsoAcceso:
             serial_rfid: str,
             sensor: ISensorGestos,
             actuador: IActuadorAcceso,
-            gesto_cierre: int | None = 0,
+            gesto_cierre: int | None = None,
+            ahora: datetime | None = None,
     ):
-        ahora = datetime.now()
         factores_ok: list[MetodoIngreso] = []
         permiso = None
 
+        if ahora is None:
+            ahora = datetime.now()
+
+            # En autenticación, desactiva 'gesto_cierre' por defecto para evitar cortes accidentales
+            # (por ejemplo, al retirar la mano). Activar con AUTH_GESTO_CIERRE=1
+            gesto_cierre_auth: int | None = None
+            if os.getenv('AUTH_GESTO_CIERRE', '0') == '1':
+                gesto_cierre_auth = gesto_cierre
+
+
         try:
-            # 1) Autorización (DENTRO del try para poder registrar fallos)
+            # 1) Autorización
             permiso = self.servicio_autorizacion.verificar_permiso_y_horario(
                 cedula=cedula, id_area=id_area, ahora=ahora
             )
@@ -47,14 +59,14 @@ class CasoUsoAcceso:
             factores_ok.append(MetodoIngreso.RFID)
 
             # 3) PIN (4)
-            sec_pin, _ = sensor.capturar_secuencia(4, gesto_cierre=gesto_cierre, timeout_s=60)
+            sec_pin, _ = sensor.capturar_secuencia(4, gesto_cierre=gesto_cierre_auth, timeout_s=60)
             if len(sec_pin) != 4:
                 raise AutenticacionError("PIN gestual incompleto: cancelado o timeout.")
             self.servicio_autenticacion.validar_pin(id_area=id_area, secuencia_capturada=sec_pin)
             factores_ok.append(MetodoIngreso.PIN_GESTUAL)
 
             # 4) Patrón (10)
-            sec_pat, tiempos = sensor.capturar_secuencia(10, gesto_cierre=gesto_cierre, timeout_s=120)
+            sec_pat, tiempos = sensor.capturar_secuencia(10, gesto_cierre=gesto_cierre_auth, timeout_s=120)
             if len(sec_pat) != 10:
                 raise AutenticacionError("Patrón incompleto: cancelado o timeout.")
             self.servicio_autenticacion.validar_patron(
@@ -62,7 +74,7 @@ class CasoUsoAcceso:
             )
             factores_ok.append(MetodoIngreso.PATRON_GESTUAL)
 
-            # 5) Éxito: actuador + auditoría + acceso
+            # 5) Exito: actuador + auditoría + acceso
             actuador.indicar_exito()
             actuador.abrir_puerta()
 
@@ -105,7 +117,7 @@ class CasoUsoAcceso:
             )
             raise
         except IntegracionHardwareError as ex:
-            # hardware/cámara/modelo: también debe quedar auditado
+            # hardware/cámara/modelo: auditado
             try:
                 actuador.indicar_fallo()
             except Exception:

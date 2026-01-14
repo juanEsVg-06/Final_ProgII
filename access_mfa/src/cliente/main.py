@@ -145,6 +145,34 @@ def pedir_fecha(etiqueta: str) -> date:
         except ValueError:
             print("Formato inválido. Ejemplo: 2026-01-10")
 
+def obtener_ahora() -> datetime:
+    """
+    Permite forzar la hora/fecha en pruebas para no depender del reloj del PC.
+    Formatos:
+        - FORZAR_HORA="HH:MM" (usa fecha actual)
+        - FORZAR_FECHA_HORA="YYYY-MM-DD HH:MM:SS" (o sin segundos)
+    """
+    override_hora = os.getenv("FORZAR_HORA", "").strip()
+    override_dt = os.getenv("FORZAR_FECHA_HORA", "").strip()
+
+    if override_dt:
+        try:
+            return datetime.fromisoformat(override_dt)
+        except ValueError:
+            raise DominioError(
+                "FORZAR_FECHA_HORA inválido. Usa 'YYYY-MM-DD HH:MM' o 'YYYY-MM-DD HH:MM:SS'."
+            )
+    if override_hora:
+        try:
+            hh, mm = override_hora.split(":")
+            hh_i, mm_i = int(hh), int(mm)
+            now = datetime.now()
+            return now.replace(hour=hh_i, minute=mm_i, second=0, microsecond=0)
+        except Exception:
+            raise DominioError("FORZAR_HORA inválido. Usa 'HH:MM' (ej: 12:00).")
+
+    return datetime.now()
+
 
 def construir_actuador() -> IActuadorAcceso:
     puerto = os.getenv("ARDUINO_PORT")
@@ -172,7 +200,6 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     Objetivo:
     - No simular: usar webcam + MediaPipe/Tasks.
     - Hacer PIN (4) más repetible: opción de exigir 'sin mano' entre dígitos.
-    - Evitar crasheos: validación de parámetros + errores claros.
     """
 
     # --- Parámetros base ---
@@ -182,7 +209,7 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     stable_frames = int(os.getenv("GESTOS_STABLE_FRAMES", "10"))
     debounce_s = float(os.getenv("GESTOS_DEBOUNCE_S", "0.9"))
 
-    # --- Regla “sin mano" (recomendado para PIN) ---
+    # --- Regla “sin mano" ---
     # 1 = habilitado, 0 = deshabilitado
     pin_require_no_hand = os.getenv("PIN_REQUIRE_NO_HAND", "1") == "1"
     patron_require_no_hand = os.getenv("PATRON_REQUIRE_NO_HAND", "1") == "1"

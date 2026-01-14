@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,7 +26,7 @@ class ServicioAutenticacion:
         except RecursoNoEncontradoError:
             raise AutenticacionError("RFID no registrada en el sistema.")
 
-        # Estado de la credencial (salida temprana)
+        # Estado de la credencial
 
         if cred.estado == EstadoCredencial.BLOQUEADA:
             raise AutenticacionError("RFID bloqueada.")
@@ -95,12 +97,24 @@ class ServicioAutenticacion:
                 f"Patrón gestual no coincide (similitud={similitud:.2f}, umbral={self.umbral_similitud_patron:.2f})."
             )
 
-        # Opcional: validación ligera de timing (si ambos existen)
-        if patron.tiempos_entre_gestos is not None and tiempos is not None:
-            if len(patron.tiempos_entre_gestos) == len(tiempos):
-                # tolerancia simple: cada delta dentro de ±40%
-                for ref, got in zip(patron.tiempos_entre_gestos, tiempos):
-                    if ref == 0:
+        # Nota: en webcams reales puede haber variación de tiempos. Para evitar falsos negativos,
+        # el check se DESACTIVA por defecto. Activacion con PATRON_TIMING_CHECK=1
+        timing_check = os.getenv("PATRON_TIMING_CHECK", "0") == "1"
+        timing_tol = float(os.getenv("PATRON_TIMING_TOL", "0.8"))  # tolerancia relativa
+        debug = os.getenv("DEBUG", "0") == "1"
+
+        if timing_check and patron.tiempos_entre_gestos is not None and tiempos is not None:
+            if len(patron.tiempos_entre_gestos) != len(tiempos):
+                if debug:
+                    print(f"[DEBUG] Patron timing: len_ref={len(patron.tiempos_entre_gestos)} len_got={len(tiempos)} -> omitiendo check")
+            else:
+                # tolerancia simple
+                for i, (ref, got) in enumerate(zip(patron.tiempos_entre_gestos, tiempos), start=1):
+                    if ref <= 0:
                         continue
-                    if not (0.6 * ref <= got <= 1.4 * ref):
+                    low = max(0.0, (1.0 - timing_tol) * ref)
+                    high = (1.0 + timing_tol) * ref
+                    if not (low <= got <= high):
+                        if debug:
+                            print(f"[DEBUG] Patron timing fuera: idx={i} ref={ref:.3f}s got={got:.3f}s rango=[{low:.3f},{high:.3f}]")
                         raise AutenticacionError("Patrón gestual: timings fuera de tolerancia.")

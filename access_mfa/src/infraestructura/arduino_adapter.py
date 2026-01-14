@@ -25,7 +25,7 @@ class IActuadorAcceso(ABC):
 
 @dataclass
 class ArduinoSimulado(IActuadorAcceso):
-    """Simula Arduino mostrando acciones en consola."""
+    """Simula Arduino"""
 
     def indicar_exito(self) -> None:
         print("[ARDUINO] EXITO -> LEDs VERDES (simulado)")
@@ -44,11 +44,11 @@ class ArduinoSerial(IActuadorAcceso):
     """
     Implementación real con pyserial.
 
-    Protocolo (según tu .ino nuevo):
+    Protocolo:
       - header: 'A' (1 byte)
       - dedos: 5 bytes (0/1) [thumb,index,middle,ring,pinky]
       - estado: 1 byte
-          0 = modo mano (azules reflejan dedos)
+          0 = modo mano
           1 = éxito (verdes ON)
           2 = fallo (rojos ON)
     Total: 7 bytes por mensaje.
@@ -70,7 +70,6 @@ class ArduinoSerial(IActuadorAcceso):
         except Exception as ex:
             raise IntegracionHardwareError(f"No se pudo abrir puerto {puerto}: {ex}")
 
-        # Muchas placas reinician al abrir Serial
         sleep(2.0)
 
         # Aseguramos “todo apagado” al iniciar
@@ -108,24 +107,22 @@ class ArduinoSerial(IActuadorAcceso):
             raise IntegracionHardwareError(f"Fallo enviando datos al Arduino: {ex}")
 
     def enviar_leds(self, dedos: list[int]) -> None:
-        """Modo mano: refleja dedos en LEDs azules."""
         self._enviar_paquete(dedos, self.ESTADO_MANO)
 
     def indicar_exito(self) -> None:
-        """Enciende los 5 VERDES."""
+        """Enciende los 5 verdes."""
         self._enviar_paquete([0, 0, 0, 0, 0], self.ESTADO_EXITO)
         sleep(1.2)
         self._enviar_paquete([0, 0, 0, 0, 0], self.ESTADO_MANO)
 
     def indicar_fallo(self) -> None:
-        """Enciende los 5 ROJOS."""
+        """Enciende los 5 rojos."""
         self._enviar_paquete([0, 0, 0, 0, 0], self.ESTADO_FALLO)
         sleep(1.2)
         self._enviar_paquete([0, 0, 0, 0, 0], self.ESTADO_MANO)
 
     def abrir_puerta(self) -> None:
-        """Efecto simple (si luego agregas relay, aquí se activa)."""
-        # Reutilizamos éxito como feedback de “apertura”
+        # Reutiliza exito como feedback
         self.indicar_exito()
 
 
