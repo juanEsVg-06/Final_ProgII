@@ -1,44 +1,57 @@
-# Sistema de Control de Acceso MFA (Webcam + Arduino)
+# access_mfa — Sistema de Control de Acceso MFA (Programación II)
 
-Proyecto final de **Programación II**: sistema de control de acceso por **múltiples factores (MFA)** para áreas (por ejemplo, laboratorios), combinando:
+Proyecto académico (MVP) de control de acceso con **MFA** (Multi-Factor Authentication) combinando:
 
-- **RFID** (posesión)
-- **PIN gestual** (4 gestos) capturado por webcam
-- **Patrón gestual** (10 gestos) capturado por webcam
-- **Auditoría** de intentos (éxito/fallo)
+- **RFID** (algo que tienes)
+- **PIN gestual** (4 gestos desde webcam)
+- **Patrón gestual** (10 gestos desde webcam)
+- **Auditoría** de intentos (éxito / fallo, motivo, factores)
 
-La captura de gestos se realiza con **MediaPipe Tasks** y **OpenCV**.  
-El Arduino (si está conectado) puede reflejar el estado de los dedos en **5 LEDs** por serial.
-
----
-
-## Tecnologías
-
-- Python
-- OpenCV (`opencv-python`)
-- MediaPipe (`mediapipe`) + modelo `hand_landmarker.task`
-- Serial Arduino (`pyserial`) *(opcional, solo si se conecta Arduino)*
+Además, integra (opcional) un **Arduino Uno** para reflejar en LEDs el estado de dedos detectado (5 bits).
 
 ---
 
-## Estructura del proyecto
+## 1) Estructura del proyecto
 
-- `src/cliente/` : menú por consola (CLI) y “wiring” (creación de servicios + handlers)
-- `src/negocio/` : lógica de negocio (modelos, servicios, caso de uso)
-- `src/infraestructura/` : integración (webcam + MediaPipe + Arduino serial)
-- `models/hand_landmarker.task` : modelo requerido por MediaPipe Tasks
-- `arduino/ArduinoUno_progra2_P2.ino` : sketch de Arduino (protocolo serial)
-- `tests/` : pruebas rápidas del sensor (webcam)
+Carpetas principales:
+
+- `src/negocio/`  
+  Lógica de dominio: entidades, servicios, reglas, casos de uso, validaciones, excepciones.
+- `src/infraestructura/`  
+  Integraciones técnicas: webcam (MediaPipe/Tasks), serial Arduino, adaptadores.
+- `tests/`  
+  Pruebas manuales de cámara y Arduino.
+- `models/`  
+  Modelos `.task` (MediaPipe Tasks).
+- `arduino/`  
+  Sketch `.ino` del Arduino Uno.
 
 ---
 
-## EJECUCIÓN
+## 2) Requisitos
 
-**Carpeta a abrir en VS Code:** la que contiene `src/` y `models/`.
+### Software
+- Python (recomendado 3.10–3.12; si 3.13 te funciona, úsalo sin problema)
+- Pip / venv
+- Webcam (para gestos)
+- (Opcional) Arduino Uno + 5 LEDs + resistencias
 
-### 1) Instalar dependencias
+### Librerías Python
+Instala al menos:
 
-```bash
+- `opencv-python`
+- `mediapipe`
+- `pyserial` (solo si usarás Arduino)
+
+---
+
+## 3) Instalación
+
+En Windows (PowerShell), desde la carpeta `access_mfa/access_mfa`:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install opencv-python mediapipe pyserial
 ```
 
@@ -125,4 +138,3 @@ donde dedos = `[thumb, index, middle, ring, pinky]` con valores 0/1.
 ::contentReference[oaicite:0]{index=0}
 ```bash
 pip install opencv-python mediapipe pyserial
-
