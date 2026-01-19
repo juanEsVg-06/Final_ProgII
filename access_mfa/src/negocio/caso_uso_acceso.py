@@ -9,7 +9,7 @@ from uuid import uuid4
 from infraestructura.arduino_adapter import IActuadorAcceso
 from infraestructura.sensor_gestos import ISensorGestos
 
-from .auditoria import ServicioAuditoria
+from .servicio_auditoria import ServicioAuditoria
 from .enums import MetodoIngreso, ResultadoAutenticacion
 from .exceptions import AutenticacionError, AutorizacionError, IntegracionHardwareError
 from .servicio_autenticacion import ServicioAutenticacion
@@ -39,8 +39,8 @@ class CasoUsoAcceso:
         if ahora is None:
             ahora = datetime.now()
 
-            # En autenticación, desactiva 'gesto_cierre' por defecto para evitar cortes accidentales
-            # (por ejemplo, al retirar la mano). Activar con AUTH_GESTO_CIERRE=1
+            # Desactivacion 'gesto_cierre' por defecto para evitar cortes accidentales
+            # (retiro de la mano). Activacion con AUTH_GESTO_CIERRE=1
             gesto_cierre_auth: int | None = None
             if os.getenv('AUTH_GESTO_CIERRE', '0') == '1':
                 gesto_cierre_auth = gesto_cierre

@@ -17,7 +17,7 @@ from infraestructura.sensor_gestos import (
     SensorGestosWebcamMediapipeTasks,
 )
 
-from negocio.auditoria import ServicioAuditoria
+from negocio.servicio_auditoria import ServicioAuditoria
 from negocio.caso_uso_acceso import CasoUsoAcceso
 from negocio.enums import EstadoCredencial, EstadoPermiso, TipoArea
 from negocio.exceptions import (
