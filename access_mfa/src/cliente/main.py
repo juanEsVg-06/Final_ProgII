@@ -13,7 +13,6 @@ from infraestructura.arduino_adapter import (
 )
 from infraestructura.sensor_gestos import (
     ISensorGestos,
-    SensorGestosSimulado,
     SensorGestosWebcamMediapipeTasks,
 )
 
@@ -142,7 +141,7 @@ def pedir_validado(etiqueta: str, validador) -> str:
         try:
             validador(v)
             return v
-        except Exception as ex:
+        except DominioError as ex:
             print(str(ex))
 
 def pedir_int_rango(etiqueta: str, minimo: int, maximo: int) -> int:
@@ -259,7 +258,7 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
             debounce_s=debounce_s,
             arduino=actuador,
             pin_require_no_hand=pin_require_no_hand,
-            patron_require_no_hand=patron_require_no_hand,
+            patron_require_no_hand=True,
             no_hand_frames=no_hand_frames,
             debug=debug,
         )

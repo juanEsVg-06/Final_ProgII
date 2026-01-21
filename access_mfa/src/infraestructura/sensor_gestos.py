@@ -44,33 +44,46 @@ class SensorGestosSimulado(ISensorGestos):
         return seq[:cantidad], None
 
 
+
 class SensorGestosWebcamMediapipeTasks(ISensorGestos):
     def __init__(
         self,
         *,
         camera_index: int = 0,
-        mostrar_preview: bool = True,
+        preview: bool = True,  # o mostrar_preview (ver alias abajo)
         stable_frames: int = 5,
         debounce_s: float = 0.6,
         flip: bool = True,
         model_path: str | None = None,
-        arduino: object | None = None,
-        # “Sin mano” entre gestos (PIN y Patrón)
+        arduino: object | None = None,  # <-- IMPORTANTE (ArduinoSerial / ArduinoSimulado)
+        actuador: object | None = None,  # <-- alias por compatibilidad
+        # reglas de captura:
         pin_require_no_hand: bool = True,
         patron_require_no_hand: bool = True,
         no_hand_frames: int = 6,
         debug: bool = False,
+        mostrar_preview: bool | None = None,  # <-- alias de GUI/console si existía
+        frame_sink: object | None = None,
     ) -> None:
+        # Alias preview: si te pasan mostrar_preview, lo respeta
+        if mostrar_preview is not None:
+            preview = bool(mostrar_preview)
+
         self.camera_index = camera_index
-        self.mostrar_preview = mostrar_preview
-        self.stable_frames = max(1, stable_frames)
-        self.debounce_s = max(0.0, debounce_s)
-        self.flip = flip
-        self.arduino = arduino
-        self.pin_require_no_hand = pin_require_no_hand
-        self.patron_require_no_hand = patron_require_no_hand
-        self.no_hand_frames = max(1, no_hand_frames)
-        self.debug = debug
+        self.mostrar_preview = bool(preview)
+
+        self.stable_frames = max(1, int(stable_frames))
+        self.debounce_s = max(0.0, float(debounce_s))
+        self.flip = bool(flip)
+
+        # Arduino integrado:
+        self.arduino = arduino if arduino is not None else actuador
+
+        self.pin_require_no_hand = bool(pin_require_no_hand)
+        self.patron_require_no_hand = bool(patron_require_no_hand)
+        self.no_hand_frames = max(1, int(no_hand_frames))
+        self.debug = bool(debug)
+        self.frame_sink = frame_sink
 
         # Umbrales calibrables
         self.margen_y = float(os.getenv("GESTOS_MARGEN_Y", "0.04"))
@@ -95,6 +108,33 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         self._mp_vision = vision
 
         self.model_path = self._resolver_model_path(model_path)
+
+    def _push_frame(self, frame_bgr) -> None:
+        sink = getattr(self, "frame_sink", None)
+        if sink is None:
+            return
+        fn = getattr(sink, "push", None)
+        if callable(fn):
+            try:
+                fn(frame_bgr)
+            except Exception:
+                pass
+
+    def _emitir_leds_dedos(self, dedos: list[int]) -> None:
+        """
+        Espejo de dedos al Arduino durante la captura.
+        Requiere que el actuador exponga enviar_leds([0/1]*5).
+        """
+        if self.arduino is None:
+            return
+        fn = getattr(self.arduino, "enviar_leds", None)
+        if not callable(fn):
+            return
+        try:
+            fn(dedos)
+        except Exception:
+            # Nunca debe romper la captura por un fallo de hardware
+            pass
 
     def _resolver_model_path(self, model_path: str | None) -> str:
         if model_path:
@@ -265,6 +305,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
 
                     dedos = self._detectar_dedos(lm, mano)
                     gesto_raw = self._dedos_a_bitmask(dedos)
+                    self._emitir_leds_dedos(dedos)
                     gesto = gesto_raw
                     # Para PIN/Patrón, evitamos aceptar gesto=0 (mano cerrada) como dígito
                     if gesto_raw == 0 and cantidad in (4, 10):
@@ -409,5 +450,10 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                 except Exception:
                     pass
             landmarker.close()
+
+            try:
+                self._emitir_leds_dedos([0, 0, 0, 0, 0])
+            except Exception:
+                pass
 
         return secuencia, tiempos if tiempos else None
