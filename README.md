@@ -1,4 +1,4 @@
-# access_mfa — Sistema de Control de Acceso MFA (Programación II)
+# Sistema de Control de Acceso MFA
 
 Proyecto académico (MVP) de control de acceso con **MFA** (Multi-Factor Authentication) combinando:
 
