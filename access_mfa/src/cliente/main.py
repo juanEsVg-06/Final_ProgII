@@ -120,27 +120,30 @@ def _seed(repo_est, repo_areas, repo_permisos, repo_rfid, repo_pins, repo_pat) -
 
 # Pre-validaciones input
 
+def _prompt(etiqueta: str) -> str:
+    lab = (etiqueta or "").strip()
+    if not lab:
+        lab = "Valor"
+    # Evita el "doble :" si ya viene incluido en la etiqueta
+    return f"{lab} " if lab.endswith(":") else f"{lab}: "
+
+
 def pedir_no_vacio(etiqueta: str) -> str:
     while True:
-        v = input(f"{etiqueta}: ").strip()
+        v = input(_prompt(etiqueta)).strip()
         if v:
             return v
-        print("NO puede estar vacío.")
+        print("No puede estar vacío.")
 
 
-def pedir_validado(
-    etiqueta: str,
-    validador: Callable[[str], str],
-    *,
-    transform: Callable[[str], str] = lambda s: s.strip(),
-) -> str:
+def pedir_validado(etiqueta: str, validador) -> str:
     while True:
-        v = transform(input(f"{etiqueta}: "))
+        v = input(_prompt(etiqueta)).strip()
         try:
-            return validador(v)
-        except Exception as e:
-            # Validadores levantan ValidacionError; no acoplamos aquí al tipo exacto.
-            print(str(e))
+            validador(v)
+            return v
+        except Exception as ex:
+            print(str(ex))
 
 def pedir_int_rango(etiqueta: str, minimo: int, maximo: int) -> int:
     while True:
@@ -453,9 +456,8 @@ def accion_listar_pins(ctx: AppContext) -> None:
 
 
 def accion_configurar_pin(ctx: AppContext) -> None:
-
-    cedula = pedir_validado("Cédula: ", validar_cedula)
-    id_banner = pedir_validado("ID Banner: ", validar_id_banner)
+    cedula = pedir_validado("Cédula", validar_cedula)
+    id_banner = pedir_validado("ID Banner", validar_id_banner)
     id_pin = pedir_no_vacio("ID PIN (ej: PIN-001)")
     id_area = pedir_no_vacio("ID Área")
 
@@ -523,8 +525,8 @@ def accion_listar_patrones(ctx: AppContext) -> None:
 
 def accion_enrolar_patron(ctx: AppContext) -> None:
     id_pat = pedir_no_vacio("ID Patrón (ej: PAT-001)")
-    cedula = pedir_validado("Cédula de Propietario", validar_cedula)
-    id_banner = pedir_validado("ID Banner: ", validar_id_banner)
+    cedula = pedir_validado("Cédula", validar_cedula)
+    id_banner = pedir_validado("ID Banner", validar_id_banner)
 
     # Garantía: 1 patrón por estudiante
     existente = None
