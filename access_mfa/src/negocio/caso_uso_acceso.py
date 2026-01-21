@@ -25,7 +25,7 @@ class CasoUsoAcceso:
     def solicitar_acceso(
             self,
             *,
-            cedula: str,
+            cedula_propietario: str,
             id_area: str,
             serial_rfid: str,
             sensor: ISensorGestos,
@@ -39,38 +39,41 @@ class CasoUsoAcceso:
         if ahora is None:
             ahora = datetime.now()
 
-            # Desactivacion 'gesto_cierre' por defecto para evitar cortes accidentales
-            # (retiro de la mano). Activacion con AUTH_GESTO_CIERRE=1
-            gesto_cierre_auth: int | None = None
-            if os.getenv('AUTH_GESTO_CIERRE', '0') == '1':
-                gesto_cierre_auth = gesto_cierre
+        # Desactivación de 'gesto_cierre' por defecto (evita cortes accidentales al retirar la mano).
+        # Activación explícita con AUTH_GESTO_CIERRE=1
+        gesto_cierre_auth: int | None = None
+        if os.getenv("AUTH_GESTO_CIERRE", "0") == "1":
+            gesto_cierre_auth = gesto_cierre
+
+        pin_timeout_s = float(os.getenv("AUTH_PIN_TIMEOUT_S", "60"))
+        patron_timeout_s = float(os.getenv("AUTH_PATRON_TIMEOUT_S", "150"))
 
 
         try:
             # 1) Autorización
             permiso = self.servicio_autorizacion.verificar_permiso_y_horario(
-                cedula=cedula, id_area=id_area, ahora=ahora
+                cedula_propietario=cedula_propietario, id_area=id_area, ahora=ahora
             )
 
             # 2) RFID
             self.servicio_autenticacion.validar_rfid(
-                serial=serial_rfid, cedula_esperada=cedula, ahora=ahora
+                serial=serial_rfid, cedula_propietario=cedula_propietario, ahora=ahora
             )
             factores_ok.append(MetodoIngreso.RFID)
 
             # 3) PIN (4)
-            sec_pin, _ = sensor.capturar_secuencia(4, gesto_cierre=gesto_cierre_auth, timeout_s=60)
+            sec_pin, _ = sensor.capturar_secuencia(4, gesto_cierre=gesto_cierre_auth, timeout_s=pin_timeout_s)
             if len(sec_pin) != 4:
-                raise AutenticacionError("PIN gestual incompleto: cancelado o timeout.")
-            self.servicio_autenticacion.validar_pin(id_area=id_area, secuencia_capturada=sec_pin)
+                raise AutenticacionError(f"PIN gestual incompleto: {len(sec_pin)}/4 (cancelado o timeout).")
+            self.servicio_autenticacion.validar_pin(cedula_propietario=cedula_propietario, id_area=id_area, secuencia_capturada=sec_pin)
             factores_ok.append(MetodoIngreso.PIN_GESTUAL)
 
             # 4) Patrón (10)
-            sec_pat, tiempos = sensor.capturar_secuencia(10, gesto_cierre=gesto_cierre_auth, timeout_s=120)
+            sec_pat, tiempos = sensor.capturar_secuencia(10, gesto_cierre=gesto_cierre_auth, timeout_s=patron_timeout_s)
             if len(sec_pat) != 10:
-                raise AutenticacionError("Patrón incompleto: cancelado o timeout.")
+                raise AutenticacionError(f"Patrón Incompleto: {len(sec_pat)}/10 (cancelado o timeout).")
             self.servicio_autenticacion.validar_patron(
-                cedula=cedula, secuencia_capturada=sec_pat, tiempos=tiempos
+                cedula_propietario=cedula_propietario, secuencia_capturada=sec_pat, tiempos=tiempos
             )
             factores_ok.append(MetodoIngreso.PATRON_GESTUAL)
 
@@ -79,20 +82,21 @@ class CasoUsoAcceso:
             actuador.abrir_puerta()
 
             registro = self.servicio_auditoria.registrar(
-                cedula_usuario=cedula,
+                cedula_propietario=cedula_propietario,
                 id_area=id_area,
                 metodo=MetodoIngreso.RFID,
                 factores=factores_ok,
                 resultado=ResultadoAutenticacion.EXITO,
                 motivo="",
                 id_permiso=permiso.id_permiso,
+                timestamp=ahora,
             )
 
             from .modelos import Acceso
 
             acceso = Acceso(
                 id_acceso=str(uuid4()),
-                cedula_usuario=cedula,
+                cedula_propietario=cedula_propietario,
                 id_area=id_area,
                 fecha_entrada=ahora,
                 registro_exitoso_id=registro.id_registro,
@@ -107,14 +111,16 @@ class CasoUsoAcceso:
             except Exception:
                 pass
             self.servicio_auditoria.registrar(
-                cedula_usuario=cedula,
+                cedula_propietario=cedula_propietario,
                 id_area=id_area,
                 metodo=MetodoIngreso.RFID,
                 factores=factores_ok,
                 resultado=ResultadoAutenticacion.FALLO,
                 motivo=str(ex),
                 id_permiso=permiso.id_permiso if permiso else None,
+                timestamp=ahora,
             )
+
             raise
         except IntegracionHardwareError as ex:
             # hardware/cámara/modelo: auditado
@@ -124,7 +130,7 @@ class CasoUsoAcceso:
                 pass
 
             self.servicio_auditoria.registrar(
-                cedula_usuario=cedula,
+                cedula_propietario=cedula_propietario,
                 id_area=id_area,
                 metodo=MetodoIngreso.RFID,
                 factores=factores_ok,

@@ -26,6 +26,7 @@ from negocio.exceptions import (
     DominioError,
     IntegracionHardwareError,
 )
+from negocio.validadores import validar_cedula, validar_correo, validar_id_banner, validar_nombre
 from negocio.modelos import (
     AreaAcceso,
     CredencialRFID,
@@ -66,11 +67,11 @@ class AppContext:
 
 def _seed(repo_est, repo_areas, repo_permisos, repo_rfid, repo_pins, repo_pat) -> None:
     e = Estudiante(
-        cedula="0102030405",
-        nombres="Estud Nombre1",
-        apellidos="Estud Apellido1",
-        correo_institucional="stud1@udla.edu.ec",
-        id_banner="B001",
+        cedula_propietario="1710034065",
+        nombres="Juan Esteban",
+        apellidos="Velastegui Gordillo",
+        correo_institucional="juanes@udla.edu.ec",
+        id_banner="A00126187",
         carrera="Ciberseguridad",
     )
     repo_est.guardar(e)
@@ -81,13 +82,13 @@ def _seed(repo_est, repo_areas, repo_permisos, repo_rfid, repo_pins, repo_pat) -
         tipo=TipoArea.LABORATORIO,
         ubicacion="Bloque A",
         hora_apertura=time(7, 0),
-        hora_cierre=time(20, 0),
+        hora_cierre=time(23, 59),
     )
     repo_areas.guardar(a)
 
     p = PermisoAcceso(
         id_permiso="PERM-001",
-        cedula_usuario=e.cedula,
+        cedula_propietario=e.cedula_propietario,
         id_area=a.id_area,
         estado=EstadoPermiso.ACTIVO,
         vigente_desde=date.today(),
@@ -97,34 +98,49 @@ def _seed(repo_est, repo_areas, repo_permisos, repo_rfid, repo_pins, repo_pat) -
 
     r = CredencialRFID(
         serial="RFID-12345",
-        cedula_propietario=e.cedula,
+        cedula_propietario=e.cedula_propietario,
         fecha_emision=date.today().replace(year=date.today().year - 1),
         fecha_expiracion=date.today().replace(year=date.today().year + 1),
         estado=EstadoCredencial.ACTIVA,
     )
     repo_rfid.guardar(r)
 
-    pin = PinGestual(id_pin="PIN-001", id_area=a.id_area, secuencia_gestos=[1, 3, 7, 15])
+    pin = PinGestual(id_pin="PIN-001", cedula_propietario=e.cedula_propietario, id_area=a.id_area, id_banner=e.id_banner, secuencia_gestos=[3, 7, 6, 2])
     repo_pins.guardar(pin)
 
     patron = PatronGestual(
         id_patron="PAT-001",
-        cedula_propietario=e.cedula,
-        secuencia_gestos=[1, 1, 2, 3, 5, 8, 13, 21, 3, 1],
+        cedula_propietario=e.cedula_propietario,
+        secuencia_gestos=[17, 25, 25, 17, 6, 7, 7, 2, 30, 31],
         fecha_captura=datetime.now(),
         tiempos_entre_gestos=None,
     )
     repo_pat.guardar(patron)
 
 
-# ------------------ Helpers input ------------------
+# Pre-validaciones input
 
 def pedir_no_vacio(etiqueta: str) -> str:
     while True:
         v = input(f"{etiqueta}: ").strip()
         if v:
             return v
-        print("No puede estar vacío.")
+        print("NO puede estar vacío.")
+
+
+def pedir_validado(
+    etiqueta: str,
+    validador: Callable[[str], str],
+    *,
+    transform: Callable[[str], str] = lambda s: s.strip(),
+) -> str:
+    while True:
+        v = transform(input(f"{etiqueta}: "))
+        try:
+            return validador(v)
+        except Exception as e:
+            # Validadores levantan ValidacionError; no acoplamos aquí al tipo exacto.
+            print(str(e))
 
 def pedir_int_rango(etiqueta: str, minimo: int, maximo: int) -> int:
     while True:
@@ -133,7 +149,7 @@ def pedir_int_rango(etiqueta: str, minimo: int, maximo: int) -> int:
             n = int(s)
             if minimo <= n <= maximo:
                 return n
-            print("Fuera de rango.")
+            print("Fuera de Rango!")
         except ValueError:
             print("Debe ser un número entero.")
 
@@ -149,8 +165,8 @@ def obtener_ahora() -> datetime:
     """
     Permite forzar la hora/fecha en pruebas para no depender del reloj del PC.
     Formatos:
-        - FORZAR_HORA="HH:MM" (usa fecha actual)
-        - FORZAR_FECHA_HORA="YYYY-MM-DD HH:MM:SS" (o sin segundos)
+        - FORZAR_HORA = "HH:MM" (usa fecha actual)
+        - FORZAR_FECHA_HORA = "YYYY-MM-DD HH:MM"
     """
     override_hora = os.getenv("FORZAR_HORA", "").strip()
     override_dt = os.getenv("FORZAR_FECHA_HORA", "").strip()
@@ -202,7 +218,7 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     - Hacer PIN (4) más repetible: opción de exigir 'sin mano' entre dígitos.
     """
 
-    # --- Parámetros base ---
+    # Parámetros Base
     camera_index = int(os.getenv("CAMERA_INDEX", "0"))
     mostrar_preview = os.getenv("GESTOS_PREVIEW", "1") == "1"
 
@@ -266,7 +282,9 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
             "[CFG] SensorGestosWebcam configurado -> "
             f"camera_index={camera_index}, preview={mostrar_preview}, "
             f"stable_frames={stable_frames}, debounce_s={debounce_s}, "
-            f"pin_require_no_hand={pin_require_no_hand}, no_hand_frames={no_hand_frames}"
+            f"pin_require_no_hand={pin_require_no_hand}, "
+            f"patron_require_no_hand={patron_require_no_hand}, "
+            f"no_hand_frames={no_hand_frames}"
         )
 
     return sensor
@@ -277,16 +295,16 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
 # Estudiantes
 
 def accion_crear_estudiante(ctx: AppContext) -> None:
-    cedula = pedir_no_vacio("Cédula")
-    nombres = pedir_no_vacio("Nombres")
-    apellidos = pedir_no_vacio("Apellidos")
-    correo = pedir_no_vacio("Correo institucional")
-    banner = pedir_no_vacio("ID Banner")
+    cedula = pedir_validado("Cédula", validar_cedula)
+    nombres = pedir_validado("Nombres", validar_nombre)
+    apellidos = pedir_validado("Apellidos", validar_nombre)
+    correo = pedir_validado("Correo institucional", validar_correo)
+    banner = pedir_validado("ID Banner", validar_id_banner)
     carrera = pedir_no_vacio("Carrera")
 
     ctx.repo_est.guardar(
         Estudiante(
-            cedula=cedula,
+            cedula_propietario=cedula,
             nombres=nombres,
             apellidos=apellidos,
             correo_institucional=correo,
@@ -294,15 +312,15 @@ def accion_crear_estudiante(ctx: AppContext) -> None:
             carrera=carrera,
         )
     )
-    print("Estudiante creado/actualizado.")
+    print("Estudiante Creado/Actualizado.")
 
 def accion_listar_estudiantes(ctx: AppContext) -> None:
     ests = ctx.repo_est.listar()
     if not ests:
-        print("No hay estudiantes registrados.")
+        print("NO hay Estudiantes registrados.")
         return
     for e in ests:
-        print(f"- {e.cedula} | {e.nombres} {e.apellidos} | {e.carrera}")
+        print(f"- {e.cedula_propietario} | {e.nombres} {e.apellidos} | {e.carrera}")
 
 # Areas
 
@@ -313,8 +331,8 @@ def accion_crear_area(ctx: AppContext) -> None:
 
     tipo = TipoArea.LABORATORIO
 
-    hora_apertura = time(pedir_int_rango("Hora apertura", 0, 23), pedir_int_rango("Minuto apertura", 0, 59))
-    hora_cierre = time(pedir_int_rango("Hora cierre", 0, 23), pedir_int_rango("Minuto cierre", 0, 59))
+    hora_apertura = time(pedir_int_rango("Hora Apertura", 0, 23), pedir_int_rango("Minuto Apertura", 0, 59))
+    hora_cierre = time(pedir_int_rango("Hora Cierre", 0, 23), pedir_int_rango("Minuto Cierre", 0, 59))
 
     ctx.repo_areas.guardar(
         AreaAcceso(
@@ -326,12 +344,12 @@ def accion_crear_area(ctx: AppContext) -> None:
             hora_cierre=hora_cierre,
         )
     )
-    print("Área creada/actualizada.")
+    print("Área Creada/Actualizada.")
 
 def accion_listar_areas(ctx: AppContext) -> None:
     areas = ctx.repo_areas.listar()
     if not areas:
-        print("No hay áreas registradas.")
+        print("NO hay Áreas registradas.")
         return
     for a in areas:
         print(f"- {a.id_area} | {a.nombre} | {a.tipo.value} | {a.ubicacion} | {a.hora_apertura}-{a.hora_cierre}")
@@ -341,75 +359,75 @@ def accion_listar_areas(ctx: AppContext) -> None:
 def accion_listar_permisos(ctx: AppContext) -> None:
     perms = ctx.repo_permisos.listar()
     if not perms:
-        print("No hay permisos.")
+        print("NO hay Permisos.")
         return
     for p in perms:
-        print(f"- {p.id_permiso} | cedula={p.cedula_usuario} | area={p.id_area} | estado={p.estado.value} "
+        print(f"- {p.id_permiso} | Cédula > {p.cedula_propietario} | Área > {p.id_area} | Estado > {p.estado.value} "
               f"| {p.vigente_desde} -> {p.vigente_hasta}")
 
 def accion_asignar_permiso(ctx: AppContext) -> None:
-    cedula = pedir_no_vacio("Cédula")
-    id_area = pedir_no_vacio("ID área (ej: LAB-101)")
-    id_permiso = pedir_no_vacio("ID permiso")
+    cedula = pedir_validado("Cédula", validar_cedula)
+    id_area = pedir_no_vacio("ID Área (ej: LAB-101)")
+    id_permiso = pedir_no_vacio("ID Permiso")
 
     est = ctx.repo_est.buscar(cedula)
     if not est:
-        print("No existe ese estudiante. Cree el estudiante primero.")
+        print("NO existe ese Estudiante. Cree el Estudiante primero.")
         return
 
     area = ctx.repo_areas.buscar(id_area)
     if not area:
-        print("No existe esa área. Cree el área primero.")
+        print("NO existe el Área. Cree el Área primero.")
         return
 
-    vigente_desde = pedir_fecha("Vigente desde")
-    vigente_hasta = pedir_fecha("Vigente hasta")
+    vigente_desde = pedir_fecha("Vigente Desde")
+    vigente_hasta = pedir_fecha("Vigente Hasta")
     if vigente_hasta < vigente_desde:
-        print("Error: vigente_hasta no puede ser menor que vigente_desde.")
+        print("Error: El valor de la Vigencia Hasta no puede ser menor que la Vigencia Desde.")
         return
 
-    print("Estado permiso: 1) ACTIVO  2) SUSPENDIDO")
+    print("Estado Permiso: 1) ACTIVO  2) SUSPENDIDO")
     op = input("Opción: ").strip()
     estado = EstadoPermiso.ACTIVO if op != "2" else EstadoPermiso.SUSPENDIDO
 
     ctx.repo_permisos.guardar(
         PermisoAcceso(
             id_permiso=id_permiso,
-            cedula_usuario=cedula,
+            cedula_propietario=cedula,
             id_area=id_area,
             estado=estado,
             vigente_desde=vigente_desde,
             vigente_hasta=vigente_hasta,
         )
     )
-    print("Permiso creado/actualizado.")
+    print("Permiso Creado/Actualizado.")
 
 # RFIDs
 
 def accion_listar_rfid(ctx: AppContext) -> None:
     rfids = ctx.repo_rfid.listar()
     if not rfids:
-        print("No hay credenciales RFID.")
+        print("NO hay credenciales RFID.")
         return
     for r in rfids:
-        print(f"- serial={r.serial} | cedula={r.cedula_propietario} | {r.fecha_emision} -> {r.fecha_expiracion} | estado={r.estado.value}")
+        print(f"- Serial > {r.serial} | Cédula > {r.cedula_propietario} | {r.fecha_emision} -> {r.fecha_expiracion} | Estado > {r.estado.value}")
 
 def accion_asignar_rfid(ctx: AppContext) -> None:
     serial = pedir_no_vacio("Serial RFID")
-    cedula = pedir_no_vacio("Cédula propietaria")
-    emision = pedir_fecha("Fecha emisión")
-    expiracion = pedir_fecha("Fecha expiración")
+    cedula = pedir_validado("Cédula de Propietario", validar_cedula)
+    emision = pedir_fecha("Fecha de Emisión")
+    expiracion = pedir_fecha("Fecha de Expiración")
     if expiracion < emision:
-        print("Error: la expiración no puede ser menor que la emisión.")
+        print("Error: La fecha de expiración no puede ser menor que la fecha de emisión.")
         return
 
     # Validacion - estudiante existe
     if not ctx.repo_est.buscar(cedula):
-        print("No existe ese estudiante. Cree el estudiante primero.")
+        print("NO existe ese Estudiante. Cree el Estudiante primero.")
         return
 
     if ctx.repo_rfid.buscar_por_serial(serial):
-        print("Error: ya existe una credencial con ese serial.")
+        print("Error: YA existe una credencial con ese serial.")
         return
 
     ctx.repo_rfid.guardar(
@@ -421,57 +439,119 @@ def accion_asignar_rfid(ctx: AppContext) -> None:
             estado=EstadoCredencial.ACTIVA,
         )
     )
-    print("RFID asignada.")
+    print("RFID Asignada.")
 
 # PINs
 
 def accion_listar_pins(ctx: AppContext) -> None:
     pins = ctx.repo_pins.listar()
     if not pins:
-        print("No hay PINs.")
+        print("NO hay PINs.")
         return
     for p in pins:
-        print(f"- area={p.id_area} | id_pin={p.id_pin} | secuencia={p.secuencia_gestos}")
+        print(f"- Área > {p.id_area} | ID Pin > {p.id_pin}")
+
 
 def accion_configurar_pin(ctx: AppContext) -> None:
+
+    cedula = pedir_validado("Cédula: ", validar_cedula)
+    id_banner = pedir_validado("ID Banner: ", validar_id_banner)
     id_pin = pedir_no_vacio("ID PIN (ej: PIN-001)")
-    id_area = pedir_no_vacio("ID área")
+    id_area = pedir_no_vacio("ID Área")
+
+    # Garantía: 1 PIN por (cedula, area)
+    existente = None
+    for pin in ctx.repo_pins.listar():
+        if pin.cedula_propietario == cedula and pin.id_area == id_area:
+            existente = pin
+            break
+
+    if existente:
+        print(f"[AVISO] Ya existe un PIN para este estudiante en esta área (ID = {existente.id_pin}).")
+        op = input("¿Desea sobrescribirlo? (S/N): ").strip().upper()
+        if op != "S":
+            print("Operación cancelada.")
+            return
+
+    est = ctx.repo_est.buscar(cedula)
+    if not est:
+        print("No existe un estudiante con esa cédula. Cree el estudiante primero.")
+        return
+    if est.id_banner != id_banner:
+        print("Identidad no verificada: el ID Banner no corresponde a la cédula ingresada.")
+        return
 
     if not ctx.repo_areas.buscar(id_area):
-        print("No existe esa área. Cree el área primero.")
+        print("NO existe esa Área. Cree el Área primero.")
         return
 
-    print("Ponga la mano frente a la cámara. Registre 4 gestos.")
+    # Aviso (no bloqueante): si no hay permiso ACTIVO vigente, el acceso igual será denegado por autorización.
+    hoy = date.today()
+    permiso_ok = any(
+        (perm.cedula_propietario == cedula and perm.id_area == id_area and perm.estado.name == "ACTIVO" and perm.es_vigente(hoy))
+        for perm in ctx.repo_permisos.listar()
+    )
+    if not permiso_ok:
+        print("[AVISO] No se encontró un permiso ACTIVO y vigente para este estudiante en el área.\n")
+
+    print("Ponga la mano frente a la Cámara. Registre 4 gestos.")
     sec, _ = ctx.sensor.capturar_secuencia(4, gesto_cierre=19, timeout_s=60)
     if len(sec) != 4:
-        print("PIN incompleto/cancelado.")
+        print("PIN Incompleto/Cancelado.")
         return
 
-    ctx.repo_pins.guardar(PinGestual(id_pin=id_pin, id_area=id_area, secuencia_gestos=sec))
-    print(f"PIN configurado: {sec}")
+    ctx.repo_pins.guardar(
+        PinGestual(
+            id_pin=id_pin,
+            cedula_propietario=cedula,
+            id_banner=id_banner,
+            id_area=id_area,
+            secuencia_gestos=sec,
+        )
+    )
+    print(f"PIN configurado con Éxito")
 
 # Patrones
 
 def accion_listar_patrones(ctx: AppContext) -> None:
     pats = ctx.repo_patrones.listar()
     if not pats:
-        print("No hay patrones.")
+        print("NO hay Patrones.")
         return
     for p in pats:
-        print(f"- cedula={p.cedula_propietario} | id_patron={p.id_patron} | secuencia={p.secuencia_gestos} | capturado={p.fecha_captura:%Y-%m-%d %H:%M:%S}")
+        print(f"- Cédula > {p.cedula_propietario} | ID Patron > {p.id_patron} | Fecha de Captura > {p.fecha_captura:%Y-%m-%d %H:%M:%S}")
 
 def accion_enrolar_patron(ctx: AppContext) -> None:
     id_pat = pedir_no_vacio("ID Patrón (ej: PAT-001)")
-    cedula = pedir_no_vacio("Cédula propietaria")
+    cedula = pedir_validado("Cédula de Propietario", validar_cedula)
+    id_banner = pedir_validado("ID Banner: ", validar_id_banner)
 
-    if not ctx.repo_est.buscar(cedula):
-        print("No existe ese estudiante. Cree el estudiante primero.")
+    # Garantía: 1 patrón por estudiante
+    existente = None
+    for pat in ctx.repo_patrones.listar():
+        if pat.cedula_propietario == cedula:
+            existente = pat
+            break
+
+    if existente:
+        print(f"[AVISO] Ya existe un patrón para esta cédula (ID={existente.id_patron}).")
+        op = input("¿Desea sobrescribirlo? (S/N): ").strip().upper()
+        if op != "S":
+            print("Operación cancelada.")
+            return
+
+    est = ctx.repo_est.buscar(cedula)
+    if not est:
+        print("No existe un estudiante con esa cédula. Cree el estudiante primero.")
+        return
+    if est.id_banner != id_banner:
+        print("Identidad no verificada: el ID Banner no corresponde a la cédula ingresada.")
         return
 
-    print("Ponga la mano frente a la cámara. Registre 10 gestos.")
+    print("Ponga la mano frente a la Cámara. Registre 10 gestos.")
     sec, tiempos = ctx.sensor.capturar_secuencia(10, gesto_cierre=19, timeout_s=180)
     if len(sec) != 10:
-        print("Patrón incompleto/cancelado.")
+        print("Patrón Incompleto/Cancelado.")
         return
 
     ctx.repo_patrones.guardar(
@@ -483,59 +563,66 @@ def accion_enrolar_patron(ctx: AppContext) -> None:
             tiempos_entre_gestos=tiempos,
         )
     )
-    print(f"Patrón enrolado: {sec}")
+    print(f"Patron enrolado con Éxito")
 
 # Accesos
 
 def accion_listar_accesos(ctx: AppContext) -> None:
     accs = ctx.repo_accesos.listar()
     if not accs:
-        print("No hay accesos concedidos.")
+        print("NO hay Accesos concedidos.")
         return
     for a in accs:
         print(
-            f"- id_acceso={a.id_acceso} | cedula={a.cedula_usuario} | area={a.id_area} | "
-            f"entrada={a.fecha_entrada:%Y-%m-%d %H:%M:%S} | registro={a.registro_exitoso_id}"
+            f"- ID Acceso > {a.id_acceso} | Cédula > {a.cedula_propietario} | Área > {a.id_area} | "
+            f" Fecha de Acceso > {a.fecha_entrada:%Y-%m-%d %H:%M:%S} | Registro > {a.registro_exitoso_id}"
         )
 
 
 def accion_intentar_acceso(ctx: AppContext) -> None:
-    cedula = pedir_no_vacio("Cédula")
-    id_area = pedir_no_vacio("ID área (ej: LAB-101)")
+    cedula = pedir_validado("Cédula", validar_cedula)
+    id_area = pedir_no_vacio("ID Área (ej: LAB-101)")
     serial = pedir_no_vacio("Serial RFID (ej: RFID-12345)")
 
     try:
+        ahora = obtener_ahora()
         acceso, registro = ctx.caso_uso.solicitar_acceso(
-            cedula=cedula,
+            cedula_propietario=cedula,
             id_area=id_area,
             serial_rfid=serial,
             sensor=ctx.sensor,
             actuador=ctx.actuador,
             gesto_cierre=19,
+            ahora=ahora,
         )
-        print(f"Acceso concedido. ID acceso={acceso.id_acceso}, registro={registro.id_registro}")
+        print(f"Acceso Concedido! ID Acceso > {acceso.id_acceso}, Registro > {registro.id_registro}")
     except (AutorizacionError, AutenticacionError) as ex:
-        print(f"Acceso denegado: {ex}")
+        print(f"|ALERTA| - Acceso Denegado! | {ex}")
     except DominioError as ex:
-        print(f"Error de dominio: {ex}")
+        print(f"Error de Dominio: {ex}")
 
 # Registros
 
 def accion_ver_registros(ctx: AppContext) -> None:
     regs = ctx.repo_registros.listar()
     if not regs:
-        print("No hay registros.")
+        print("NO hay Registros.")
         return
     for r in regs:
         print(
-            f"[{r.timestamp:%Y-%m-%d %H:%M:%S}] usuario={r.cedula_usuario} area={r.id_area} "
-            f"resultado={r.resultado} factores={','.join([f.value for f in r.factores])} motivo={r.motivo}"
+            f"[{r.timestamp:%Y-%m-%d %H:%M:%S}] Usuario > {r.cedula_propietario} Área > {r.id_area} "
+            f"Resultado > {r.resultado} Factores > {','.join([f.value for f in r.factores])} Motivo > {r.motivo}"
         )
 
 # Datos Demo
 
 def accion_cargar_seed_y_mostrar(ctx: AppContext) -> None:
-    _seed(ctx.repo_est, ctx.repo_areas, ctx.repo_permisos, ctx.repo_rfid, ctx.repo_pins, ctx.repo_patrones)
+    try:
+        _seed(ctx.repo_est, ctx.repo_areas, ctx.repo_permisos, ctx.repo_rfid, ctx.repo_pins, ctx.repo_patrones)
+    except DominioError as ex:
+        print(f"|ALERTA| - Seed falló por validación: {ex}")
+        return
+
     print("Seed cargada.")
     print("\n[Seed] Estudiantes:")
     accion_listar_estudiantes(ctx)
@@ -557,13 +644,13 @@ def imprimir_menu() -> None:
     print("\n--- Sistema de Control de Acceso MFA ---")
     print("1) Crear Estudiante")
     print("2) Listar Estudiantes")
-    print("3) Crear Area")
+    print("3) Crear Área")
     print("4) Listar Areas")
     print("5) Asignar Permiso")
     print("6) Asignar RFID")
-    print("7) Configurar PIN (por Area)")
+    print("7) Configurar PIN (por Área)")
     print("8) Enrolar Patrón (por Estudiante)")
-    print("9) Intentar Acceso")
+    print("9) Solicitar Acceso (MFA)")
     print("10) Ver Registros de Autenticación")
     print("11) Listar Permisos")
     print("12) Listar RFIDs")
@@ -597,7 +684,7 @@ def main_loop(ctx: AppContext) -> None:
         imprimir_menu()
         op = input("Opción: ").strip().upper()
         if op == "0":
-            print("Saliendo...")
+            print("Saliendo del programa...")
             # Cierre del serial si aplica
             if hasattr(ctx.actuador, "close"):
                 try:
@@ -608,7 +695,7 @@ def main_loop(ctx: AppContext) -> None:
 
         accion = acciones.get(op)
         if not accion:
-            print("Opción inválida.")
+            print("|ALERTA| - Opción Inválida!")
             continue
 
         try:
@@ -616,7 +703,10 @@ def main_loop(ctx: AppContext) -> None:
         except DominioError as ex:
             print(f"Error de dominio: {ex}")
         except Exception as ex:
-            print(f"[ERROR] {type(ex).__name__}: {ex}")
+            if os.getenv("DEBUG", "0") == "1":
+                print(f"[ERROR] {type(ex).__name__}: {ex}")
+            else:
+                print("Ocurrió un error inesperado. Verifique su configuración e intente nuevamente.")
 
 def main() -> None:
     repo_est = RepoEstudiantes()

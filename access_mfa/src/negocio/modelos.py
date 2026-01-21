@@ -13,6 +13,7 @@ from .enums import (
     TipoArea,
 )
 from .exceptions import ValidacionError
+from .validadores import validar_cedula, validar_correo, validar_id_banner, validar_nombre
 
 # Requerimiento de estado "no vacio"
 
@@ -30,7 +31,7 @@ def _require_int_range(value: int, field_name: str, min_v: int, max_v: int) -> i
 
 @dataclass
 class Estudiante:
-    cedula: str
+    cedula_propietario: str
     nombres: str
     apellidos: str
     correo_institucional: str
@@ -39,16 +40,20 @@ class Estudiante:
     estado: str = "ACTIVO"
 
     def __post_init__(self) -> None:
-        self.cedula = _require_non_empty(self.cedula, "cédula")
-        if not self.cedula.isdigit():
-            raise ValidacionError("cédula debe contener solo dígitos.")
-        # Nota: no valida algoritmo de cédula para no bloquear datos de prueba.
+        self.cedula_propietario = _require_non_empty(self.cedula_propietario, "Cédula")
+        validar_cedula(self.cedula_propietario)
 
-        self.nombres = _require_non_empty(self.nombres, "nombres")
-        self.apellidos = _require_non_empty(self.apellidos, "apellidos")
-        self.correo_institucional = _require_non_empty(self.correo_institucional, "correo institucional")
+        self.nombres = _require_non_empty(self.nombres, "Nombres")
+        self.apellidos = _require_non_empty(self.apellidos, "Apellidos")
+        validar_nombre(self.nombres, campo="Nombres")
+        validar_nombre(self.apellidos, campo="Apellidos")
+
+        self.correo_institucional = _require_non_empty(self.correo_institucional, "Correo Institucional")
+        validar_correo(self.correo_institucional)
+
         self.id_banner = _require_non_empty(self.id_banner, "ID Banner")
-        self.carrera = _require_non_empty(self.carrera, "carrera")
+        self.id_banner = validar_id_banner(self.id_banner)
+        self.carrera = _require_non_empty(self.carrera, "Carrera")
 
 @dataclass
 class AreaAcceso:
@@ -64,7 +69,7 @@ class AreaAcceso:
         self.nombre = _require_non_empty(self.nombre, "nombre")
         self.ubicacion = _require_non_empty(self.ubicacion, "ubicación")
         if not isinstance(self.hora_apertura, time) or not isinstance(self.hora_cierre, time):
-            raise ValidacionError("hora_apertura y hora_cierre deben ser tipo datetime.time.")
+            raise ValidacionError("Hora de Apertura y Hora de Cierre deben ser tipo 'datetime.time.'")
 
     def es_accesible_ahora(self, ahora: datetime) -> bool:
         t = ahora.time()
@@ -87,10 +92,11 @@ class CredencialRFID:
     ultimo_acceso: Optional[datetime] = None
 
     def __post_init__(self) -> None:
-        self.serial = _require_non_empty(self.serial, "serial RFID")
-        self.cedula_propietario = _require_non_empty(self.cedula_propietario, "cédula propietario")
+        self.serial = _require_non_empty(self.serial, "Serial RFID")
+        self.cedula_propietario = _require_non_empty(self.cedula_propietario, "Cédula Propietario")
+        validar_cedula(self.cedula_propietario)
         if self.fecha_expiracion < self.fecha_emision:
-            raise ValidacionError("fecha_expiracion no puede ser anterior a fecha_emision.")
+            raise ValidacionError("Fecha de Expiración no puede ser anterior a Fecha de Emisión.")
 
     def esta_vigente(self, hoy: date) -> bool:
         if self.estado in (EstadoCredencial.BLOQUEADA, EstadoCredencial.PERDIDA):
@@ -102,21 +108,31 @@ class CredencialRFID:
 @dataclass
 class PinGestual:
     id_pin: str
+    cedula_propietario: str
     id_area: str
+    id_banner: str
     secuencia_gestos: List[int]  # cada gesto: 0..31
     estado: EstadoPin = EstadoPin.ACTIVO
     intentos_fallidos: int = 0
     max_intentos: int = 3
 
     def __post_init__(self) -> None:
-        self.id_pin = _require_non_empty(self.id_pin, "id_pin")
-        self.id_area = _require_non_empty(self.id_area, "id_area")
+        self.id_pin = _require_non_empty(self.id_pin, field_name="ID Pin")
+        self.cedula_propietario = _require_non_empty(self.cedula_propietario, field_name="Cédula del Propietario")
+        self.id_banner = _require_non_empty(self.id_banner, field_name="ID Banner")
+        self.id_area = _require_non_empty(self.id_area, field_name="ID Área")
+
+        validar_cedula(self.cedula_propietario)
+        validar_id_banner(self.id_banner)
+
         if len(self.secuencia_gestos) == 0:
-            raise ValidacionError("secuencia_gestos no puede estar vacía.")
+            raise ValidacionError("Secuencia de Gestos NO puede estar vacía.")
+        if len(self.secuencia_gestos) != 4 or any(not isinstance(x, int) for x in self.secuencia_gestos):
+            raise ValidacionError("PIN gestual debe tener exactamente 4 enteros.")
         self.secuencia_gestos = [
             _require_int_range(g, "gesto", 0, 31) for g in self.secuencia_gestos
         ]
-        self.max_intentos = _require_int_range(self.max_intentos, "max_intentos", 1, 10)
+        self.max_intentos = _require_int_range(self.max_intentos, "Max intentos", 1, 10)
 
 
 @dataclass
@@ -129,8 +145,9 @@ class PatronGestual:
     tiempos_entre_gestos: Optional[List[float]] = None
 
     def __post_init__(self) -> None:
-        self.id_patron = _require_non_empty(self.id_patron, "id_patron")
+        self.id_patron = _require_non_empty(self.id_patron, "ID Patron")
         self.cedula_propietario = _require_non_empty(self.cedula_propietario, "cédula propietario")
+        validar_cedula(self.cedula_propietario)
         if len(self.secuencia_gestos) == 0:
             raise ValidacionError("secuencia_gestos del patrón no puede estar vacía.")
         self.secuencia_gestos = [
@@ -139,27 +156,28 @@ class PatronGestual:
         if self.tiempos_entre_gestos is not None:
             if len(self.tiempos_entre_gestos) != max(0, len(self.secuencia_gestos) - 1):
                 raise ValidacionError(
-                    "tiempos_entre_gestos debe tener longitud len(secuencia)-1."
+                    "Tiempo entre Gestos debe tener longitud len(secuencia)-1."
                 )
             if any(t < 0 for t in self.tiempos_entre_gestos):
-                raise ValidacionError("tiempos_entre_gestos no puede contener valores negativos.")
+                raise ValidacionError("Tiempo entre Gestos no puede contener valores negativos.")
 
 
 @dataclass
 class PermisoAcceso:
     id_permiso: str
-    cedula_usuario: str
+    cedula_propietario: str
     id_area: str
     estado: EstadoPermiso = EstadoPermiso.ACTIVO
     vigente_desde: Optional[date] = None
     vigente_hasta: Optional[date] = None
 
     def __post_init__(self) -> None:
-        self.id_permiso = _require_non_empty(self.id_permiso, "id_permiso")
-        self.cedula_usuario = _require_non_empty(self.cedula_usuario, "cédula usuario")
-        self.id_area = _require_non_empty(self.id_area, "id_area")
+        self.id_permiso = _require_non_empty(self.id_permiso, "ID Permiso")
+        self.cedula_propietario = _require_non_empty(self.cedula_propietario, "Cédula Usuario")
+        validar_cedula(self.cedula_propietario)
+        self.id_area = _require_non_empty(self.id_area, "ID Area")
         if self.vigente_desde and self.vigente_hasta and self.vigente_hasta < self.vigente_desde:
-            raise ValidacionError("vigente_hasta no puede ser anterior a vigente_desde.")
+            raise ValidacionError("Vigente 'hasta' no puede ser anterior a Vigente 'desde'.")
 
     def es_vigente(self, hoy: date) -> bool:
         if self.estado != EstadoPermiso.ACTIVO:
@@ -174,7 +192,7 @@ class PermisoAcceso:
 class RegistroAutenticacion:
     id_registro: str
     timestamp: datetime
-    cedula_usuario: str
+    cedula_propietario: str
     id_area: str
     metodo: MetodoIngreso
     factores: List[MetodoIngreso] = field(default_factory=list)
@@ -183,21 +201,23 @@ class RegistroAutenticacion:
     id_permiso: Optional[str] = None
 
     def __post_init__(self) -> None:
-        self.id_registro = _require_non_empty(self.id_registro, "id_registro")
-        self.cedula_usuario = _require_non_empty(self.cedula_usuario, "cédula usuario")
-        self.id_area = _require_non_empty(self.id_area, "id_area")
+        self.id_registro = _require_non_empty(self.id_registro, "ID Registro")
+        self.cedula_propietario = _require_non_empty(self.cedula_propietario, "Cédula Usuario")
+        validar_cedula(self.cedula_propietario)
+        self.id_area = _require_non_empty(self.id_area, "ID Area")
 
 @dataclass
 class Acceso:
     id_acceso: str
-    cedula_usuario: str
+    cedula_propietario: str
     id_area: str
     fecha_entrada: datetime
     registro_exitoso_id: str
     fecha_salida: Optional[datetime] = None
 
     def __post_init__(self) -> None:
-        self.id_acceso = _require_non_empty(self.id_acceso, "id_acceso")
-        self.cedula_usuario = _require_non_empty(self.cedula_usuario, "cédula usuario")
-        self.id_area = _require_non_empty(self.id_area, "id_area")
-        self.registro_exitoso_id = _require_non_empty(self.registro_exitoso_id, "registro_exitoso_id")
+        self.id_acceso = _require_non_empty(self.id_acceso, "ID Acceso")
+        self.cedula_propietario = _require_non_empty(self.cedula_propietario, "Cédula Usuario")
+        validar_cedula(self.cedula_propietario)
+        self.id_area = _require_non_empty(self.id_area, "ID Area")
+        self.registro_exitoso_id = _require_non_empty(self.registro_exitoso_id, "Registro Exitoso ID")

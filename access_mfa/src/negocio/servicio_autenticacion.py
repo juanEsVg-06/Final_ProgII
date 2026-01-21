@@ -1,6 +1,6 @@
 from __future__ import annotations
-import os
 
+import os
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,7 +20,7 @@ class ServicioAutenticacion:
     max_intentos_pin: int = 3
     umbral_similitud_patron: float = 0.9
 
-    def validar_rfid(self, *, serial: str, cedula_esperada: str, ahora: datetime) -> None:
+    def validar_rfid(self, *, serial: str, cedula_propietario: str, ahora: datetime) -> None:
         try:
             cred = self.repo_rfid.obtener_por_serial(serial)
         except RecursoNoEncontradoError:
@@ -35,7 +35,7 @@ class ServicioAutenticacion:
         if cred.estado == EstadoCredencial.EXPIRADA:
             raise AutenticacionError("RFID expirada.")
 
-        if cred.cedula_propietario != cedula_esperada:
+        if cred.cedula_propietario != cedula_propietario:
             cred.intentos_fallidos += 1
             if cred.intentos_fallidos >= self.max_intentos_rfid:
                 cred.estado = EstadoCredencial.BLOQUEADA
@@ -51,33 +51,32 @@ class ServicioAutenticacion:
                 raise AutenticacionError("RFID bloqueada por demasiados intentos fallidos.")
             raise AutenticacionError("RFID inválida/expirada/bloqueada.")
 
-
         # Reset de fallos y éxito
         cred.intentos_exitosos += 1
         cred.intentos_fallidos = 0
         cred.ultimo_acceso = ahora
 
-    def validar_pin(self, *, id_area: str, secuencia_capturada: list[int]) -> None:
+    def validar_pin(self, *, cedula_propietario: str, id_area: str, secuencia_capturada: list[int]) -> None:
         try:
-            pin = self.repo_pins.obtener_por_area(id_area)
+            pin = self.repo_pins.obtener_por_usuario_area(cedula_propietario, id_area)
         except RecursoNoEncontradoError:
-            raise AutenticacionError("No hay PIN gestual configurado para esta área.")
+            raise AutenticacionError(f"No hay PIN gestual configurado para Usuario > {cedula_propietario} en esta Área > {id_area}")
 
         if pin.estado == EstadoPin.BLOQUEADO:
-            raise AutenticacionError("PIN gestual bloqueado para esta área.")
+            raise AutenticacionError(f"PIN gestual bloqueado para Usuario > {cedula_propietario} en esta Área > {id_area}")
 
         if secuencia_capturada != pin.secuencia_gestos:
             pin.intentos_fallidos += 1
             if pin.intentos_fallidos >= self.max_intentos_pin:
                 pin.estado = EstadoPin.BLOQUEADO
-            raise AutenticacionError("PIN gestual incorrecto.")
+            raise AutenticacionError("PIN gestual Incorrecto.")
 
         # exito
         pin.intentos_fallidos = 0
 
-    def validar_patron(self, *, cedula: str, secuencia_capturada: list[int], tiempos: list[float] | None) -> None:
+    def validar_patron(self, *, cedula_propietario: str, secuencia_capturada: list[int], tiempos: list[float] | None) -> None:
         try:
-            patron = self.repo_patrones.obtener_por_usuario(cedula)
+            patron = self.repo_patrones.obtener_por_usuario(cedula_propietario)
         except RecursoNoEncontradoError:
             raise AutenticacionError("No hay patrón gestual enrolado para este usuario.")
 

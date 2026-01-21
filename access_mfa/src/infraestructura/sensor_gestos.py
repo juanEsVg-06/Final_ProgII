@@ -204,7 +204,12 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
 
         # NUEVO: aplicar “sin mano” también a patrón(10)
         # (queda activado para PIN=4 y PATRON=10; si quieres para TODO, cambia la condición a cantidad >= 2)
-        enforce_no_hand_between = bool(self.pin_require_no_hand) and (cantidad in (4, 10))
+        if cantidad == 4:
+            enforce_no_hand_between = bool(self.pin_require_no_hand)
+        elif cantidad == 10:
+            enforce_no_hand_between = bool(self.patron_require_no_hand)
+        else:
+            enforce_no_hand_between = False
 
         waiting_no_hand = False
         no_hand_count = 0

@@ -16,18 +16,22 @@ class ServicioAuditoria:
     def registrar(
         self,
         *,
-        cedula_usuario: str,
+        cedula_propietario: str,
         id_area: str,
         metodo: MetodoIngreso,
         factores: list[MetodoIngreso],
         resultado: ResultadoAutenticacion,
         motivo: str = "",
         id_permiso: str | None = None,
+        timestamp: datetime | None = None,
     ) -> RegistroAutenticacion:
+        if timestamp is None:
+            timestamp = datetime.now()
+
         r = RegistroAutenticacion(
             id_registro=str(uuid4()),
-            timestamp=datetime.now(),
-            cedula_usuario=cedula_usuario,
+            timestamp=timestamp,
+            cedula_propietario=cedula_propietario,
             id_area=id_area,
             metodo=metodo,
             factores=factores,
