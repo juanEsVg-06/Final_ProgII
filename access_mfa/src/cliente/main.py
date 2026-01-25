@@ -249,7 +249,7 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     if no_hand_frames < 1:
         raise IntegracionHardwareError("NO_HAND_FRAMES inválido (mínimo 1).")
 
-    # Construcción del sensor webcam
+    # Construcción del sensor
     try:
         sensor = SensorGestosWebcamMediapipeTasks(
             camera_index=camera_index,
