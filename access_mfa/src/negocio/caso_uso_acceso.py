@@ -47,6 +47,7 @@ class CasoUsoAcceso:
 
         pin_timeout_s = float(os.getenv("AUTH_PIN_TIMEOUT_S", "60"))
         patron_timeout_s = float(os.getenv("AUTH_PATRON_TIMEOUT_S", "150"))
+        patron_len = int(os.getenv("AUTH_PATRON_LEN", "6"))
 
 
         try:
@@ -68,10 +69,10 @@ class CasoUsoAcceso:
             self.servicio_autenticacion.validar_pin(cedula_propietario=cedula_propietario, id_area=id_area, secuencia_capturada=sec_pin)
             factores_ok.append(MetodoIngreso.PIN_GESTUAL)
 
-            # 4) Patrón (10)
-            sec_pat, tiempos = sensor.capturar_secuencia(10, gesto_cierre=gesto_cierre_auth, timeout_s=patron_timeout_s)
-            if len(sec_pat) != 10:
-                raise AutenticacionError(f"Patrón Incompleto: {len(sec_pat)}/10 (cancelado o timeout).")
+            # 4) Patrón (len configurable, por defecto 6)
+            sec_pat, tiempos = sensor.capturar_secuencia(patron_len, gesto_cierre=gesto_cierre_auth, timeout_s=patron_timeout_s)
+            if len(sec_pat) != patron_len:
+                raise AutenticacionError(f"Patrón Incompleto: {len(sec_pat)}/{patron_len} (cancelado o timeout).")
             self.servicio_autenticacion.validar_patron(
                 cedula_propietario=cedula_propietario, secuencia_capturada=sec_pat, tiempos=tiempos
             )

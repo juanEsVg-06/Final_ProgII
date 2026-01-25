@@ -242,14 +242,17 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
         start_ts = datetime.now()
         t0_ms = int(start_ts.timestamp() * 1000)
 
-        # NUEVO: aplicar “sin mano” también a patrón(10)
-        # (queda activado para PIN=4 y PATRON=10; si quieres para TODO, cambia la condición a cantidad >= 2)
+        # “Sin mano” entre gestos:
+        # - PIN (cantidad=4): usa pin_require_no_hand
+        # - Patrón (cantidad>=2 y !=4): usa patron_require_no_hand
         if cantidad == 4:
             enforce_no_hand_between = bool(self.pin_require_no_hand)
-        elif cantidad == 10:
+        elif cantidad >= 2:
             enforce_no_hand_between = bool(self.patron_require_no_hand)
         else:
             enforce_no_hand_between = False
+
+        render_gui = bool(self.mostrar_preview or getattr(self, "frame_sink", None) is not None)
 
         waiting_no_hand = False
         no_hand_count = 0
@@ -308,7 +311,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                     self._emitir_leds_dedos(dedos)
                     gesto = gesto_raw
                     # Para PIN/Patrón, evitamos aceptar gesto=0 (mano cerrada) como dígito
-                    if gesto_raw == 0 and cantidad in (4, 10):
+                    if gesto_raw == 0 and cantidad >= 2:
                         gesto = None
 
                     # espejo de LEDs (si existe)
@@ -318,7 +321,7 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                         except Exception:
                             pass
 
-                    if self.mostrar_preview:
+                    if render_gui:
                         xs = [p.x for p in lm]
                         ys = [p.y for p in lm]
                         x1, y1 = int(min(xs) * w), int(min(ys) * h)
@@ -347,10 +350,8 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                         no_hand_count = 0
                         stable_count = 0
                         current_candidate = None
-                        extra_line = "NEUTRO: retira la mano para continuar"
-
-                    # Render + teclas y luego seguimos
-                    if self.mostrar_preview:
+                        extra_line = "NEUTRO: retira la mano para continuar"                    # Render + (opcional) ventana y luego seguimos
+                    if render_gui:
                         msg1 = f"Captura {len(secuencia)}/{cantidad} | ESC=salir | cierre={gesto_cierre if gesto_cierre is not None else '-'}"
                         msg2 = "Sin mano detectada" if not hay_mano else f"Gesto={gesto_raw} bin={gesto_raw:05b} mano={mano}"
                         msg3 = extra_line
@@ -365,6 +366,10 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                         put_line(70, msg2)
                         put_line(105, msg3)
 
+                    # Enviar frame a la GUI (si está configurado)
+                    self._push_frame(frame)
+
+                    if self.mostrar_preview:
                         cv2.imshow(win, frame)
                         if cv2.getWindowProperty(win, cv2.WND_PROP_VISIBLE) < 1:
                             break
@@ -372,10 +377,8 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                         if k == 27 or k == ord("q"):
                             break
 
-                    continue
-
-                # UI normal
-                if self.mostrar_preview:
+                    continue                # UI normal
+                if render_gui:
                     msg1 = f"Captura {len(secuencia)}/{cantidad} | ESC=salir | cierre={gesto_cierre if gesto_cierre is not None else '-'}"
                     msg2 = f"Estabilizando {stable_count}/{self.stable_frames}" if hay_mano else "Sin mano detectada"
                     msg3 = f"Gesto={gesto_raw} bin={gesto_raw:05b} dedos={dedos} mano={mano}" if (gesto is not None and dedos is not None) else ""
@@ -390,12 +393,17 @@ class SensorGestosWebcamMediapipeTasks(ISensorGestos):
                     put_line(70, msg2)
                     put_line(105, msg3)
 
+                # Enviar frame a la GUI (si está configurado)
+                self._push_frame(frame)
+
+                if self.mostrar_preview:
                     cv2.imshow(win, frame)
                     if cv2.getWindowProperty(win, cv2.WND_PROP_VISIBLE) < 1:
                         break
                     k = cv2.waitKey(1) & 0xFF
                     if k == 27 or k == ord("q"):
                         break
+
 
                 # Lógica de estabilidad
                 if gesto is None:

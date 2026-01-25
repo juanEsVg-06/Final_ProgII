@@ -7,12 +7,11 @@ from tkinter import ttk, messagebox
 from datetime import date, datetime, time
 
 from negocio.enums import EstadoCredencial, EstadoPermiso, TipoArea
-from negocio.exceptions import DominioError
+from negocio.exceptions import DominioError, AutenticacionError, AutorizacionError
 from negocio.modelos import AreaAcceso, CredencialRFID, Estudiante, PermisoAcceso, PinGestual, PatronGestual
 from negocio.validadores import validar_cedula, validar_correo, validar_id_banner, validar_nombre
 
 from interfaz_gui.bootstrap import AppBoot, crear_app
-
 
 # --------------------- Utilidades UI ---------------------
 
@@ -281,7 +280,8 @@ class AccessMFAWindow(tk.Tk):
             )
             self.lbl_counts.config(text=t)
         except Exception:
-            self.lbl_counts.config(text="No se pudo cargar el resumen.")
+            t = "No se pudo cargar el resumen."
+            self.lbl_counts.config(text=t)
 
         sensor_name = type(self.app.sensor).__name__
         act_name = type(self.app.actuador).__name__
@@ -684,10 +684,10 @@ class AccessMFAWindow(tk.Tk):
                 if est.id_banner != ban:
                     raise DominioError("Identidad no verificada: el ID Banner no corresponde a la cédula ingresada.")
 
-                write("Captura de Patrón: se abrirá la ventana de la cámara/simulador. Registre 10 gestos.")
+                write("Captura de Patrón: se abrirá la ventana de la cámara/simulador. Registre 6 gestos.")
 
-                sec, tiempos = self.app.sensor.capturar_secuencia(10, gesto_cierre=19, timeout_s=180)
-                if len(sec) != 10:
+                sec, tiempos = self.app.sensor.capturar_secuencia(6, gesto_cierre=19, timeout_s=150)
+                if len(sec) != 6:
                     write("Patrón incompleto/cancelado. No se guardó.")
                     return
 
@@ -750,7 +750,7 @@ class AccessMFAWindow(tk.Tk):
                 serial = (v_serial.get() or "").strip()
 
                 write("Iniciando flujo 2FA: se abrirá la ventana de la cámara/simulador cuando corresponda.")
-                acc = self.app.caso_uso.solicitar_acceso(
+                acceso, registro = self.app.caso_uso.solicitar_acceso(
                     cedula_propietario=ced,
                     id_area=id_area,
                     serial_rfid=serial,
@@ -758,8 +758,12 @@ class AccessMFAWindow(tk.Tk):
                     actuador=self.app.actuador,
                     gesto_cierre=19,
                 )
-                write(f"RESULTADO: {acc.resultado.name} | motivo={acc.motivo}")
+                rid = getattr(registro, "id_registro", "-")
+                write(f"[EXITO] Acceso={acceso.id_acceso} | Registro={rid}")
                 self._refresh_counts()
+                self._refresh_auditoria()
+            except (AutorizacionError, AutenticacionError) as ex:
+                write(f"[DENEGADO] {ex}")
                 self._refresh_auditoria()
             except DominioError as ex:
                 write(f"[DENEGADO] {ex}")
@@ -878,7 +882,7 @@ class AccessMFAWindow(tk.Tk):
             patron = PatronGestual(
                 id_patron="PAT-001",
                 cedula_propietario=e.cedula_propietario,
-                secuencia_gestos=[17, 25, 25, 17, 6, 7, 7, 2, 30, 31],
+                secuencia_gestos=[17, 25, 25, 17, 6, 7],
                 fecha_captura=datetime.now(),
                 tiempos_entre_gestos=None,
             )

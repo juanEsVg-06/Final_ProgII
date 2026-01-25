@@ -110,7 +110,7 @@ def _seed(repo_est, repo_areas, repo_permisos, repo_rfid, repo_pins, repo_pat) -
     patron = PatronGestual(
         id_patron="PAT-001",
         cedula_propietario=e.cedula_propietario,
-        secuencia_gestos=[17, 25, 25, 17, 6, 7, 7, 2, 30, 31],
+        secuencia_gestos=[17, 25, 25, 17, 6, 7],
         fecha_captura=datetime.now(),
         tiempos_entre_gestos=None,
     )
@@ -216,7 +216,7 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     Construye el sensor REAL (webcam) con parámetros controlables por variables de entorno.
 
     Objetivo:
-    - No simular: usar webcam + MediaPipe/Tasks.
+    - Usar webcam + MediaPipe/Tasks.
     - Hacer PIN (4) más repetible: opción de exigir 'sin mano' entre dígitos.
     """
 
@@ -225,7 +225,7 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
     mostrar_preview = os.getenv("GESTOS_PREVIEW", "1") == "1"
 
     stable_frames = int(os.getenv("GESTOS_STABLE_FRAMES", "10"))
-    debounce_s = float(os.getenv("GESTOS_DEBOUNCE_S", "0.9"))
+    debounce_s = float(os.getenv("GESTOS_DEBOUNCE_S", "0.8"))
 
     # --- Regla “sin mano" ---
     # 1 = habilitado, 0 = deshabilitado
@@ -258,7 +258,7 @@ def construir_sensor(actuador: Optional[IActuadorAcceso]) -> ISensorGestos:
             debounce_s=debounce_s,
             arduino=actuador,
             pin_require_no_hand=pin_require_no_hand,
-            patron_require_no_hand=True,
+            patron_require_no_hand=patron_require_no_hand,
             no_hand_frames=no_hand_frames,
             debug=debug,
         )
@@ -549,9 +549,9 @@ def accion_enrolar_patron(ctx: AppContext) -> None:
         print("Identidad no verificada: el ID Banner no corresponde a la cédula ingresada.")
         return
 
-    print("Ponga la mano frente a la Cámara. Registre 10 gestos.")
-    sec, tiempos = ctx.sensor.capturar_secuencia(10, gesto_cierre=19, timeout_s=180)
-    if len(sec) != 10:
+    print("Ponga la mano frente a la Cámara. Registre 6 gestos.")
+    sec, tiempos = ctx.sensor.capturar_secuencia(6, gesto_cierre=19, timeout_s=150)
+    if len(sec) != 6:
         print("Patrón Incompleto/Cancelado.")
         return
 

@@ -31,7 +31,7 @@ class MetodoIngreso(str, Enum):
 class TipoArea(str, Enum):
     LABORATORIO = "LABORATORIO"
     BODEGA = "BODEGA"
-    AREA_SENSIBLE = "AREA_SENSIBLE"
+    AREA_SENSIBLE = "AREA SENSIBLE"
 
 
 class EstadoPermiso(str, Enum):

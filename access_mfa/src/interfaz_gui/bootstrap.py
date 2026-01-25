@@ -172,6 +172,6 @@ def _crear_sensor(
     else:
         secuencias = [
             [1, 3, 7, 15],
-            [1, 1, 2, 3, 5, 8, 13, 21, 3, 1],
+            [17, 25, 25, 17, 6, 7],
         ]
         return SensorGestosSimulado(secuencias=secuencias)
